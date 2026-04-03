@@ -1,5 +1,5 @@
 {
-  "name": "@repo/my-app",
+  "name": "@repo/server",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
-    "typescript": "^5.9.3"
+    "typescript": "catalog:"
   },
   "imports": {
     "#*": "./src/*"

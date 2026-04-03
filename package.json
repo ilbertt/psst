@@ -1,5 +1,5 @@
 {
-  "name": "bun-monorepo",
+  "name": "psst-monorepo",
   "type": "module",
   "private": true,
   "scripts": {
@@ -10,19 +10,23 @@
     "check:commit-message": "bun run --bun commitlint",
     "fix:codestyle": "bun run --bun biome check --write"
   },
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "typescript": "^5.9.3"
+    }
+  },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.9",
+    "@biomejs/biome": "^2.4.10",
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
     "@commitlint/format": "^20.5.0",
     "@commitlint/types": "^20.5.0",
     "@types/bun": "latest",
-    "turbo": "^2.8.20",
-    "typescript": "^5.9.3"
+    "turbo": "^2.9.3"
   },
   "packageManager": "bun@1.3.11"
 }

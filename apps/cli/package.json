@@ -1,15 +1,14 @@
 {
-  "name": "@repo/my-package",
+  "name": "@repo/cli",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun run build.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
     "check:types": "bun run --bun tsc"
   },
   "devDependencies": {
-    "@repo/pack-utils": "workspace:*",
     "@repo/typescript-config": "workspace:*",
-    "typescript": "^5.9.3"
+    "typescript": "catalog:"
   },
   "imports": {
     "#*": "./src/*"

@@ -1,10 +1,10 @@
-# Contributing to <repository-name>
+# Contributing to psst
 
 ## Development setup
 
 ```bash
-git clone <repository-url>
-cd <repository-name>
+git clone https://github.com/ilbertt/psst.git
+cd psst
 bun install
 ```
 

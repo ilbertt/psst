@@ -1,6 +1,10 @@
 import { buildCommand } from '@stricli/core';
 import type { AppContext } from '#context.ts';
 import { checkFfmpeg } from '#services/audio.ts';
+import { answerCall } from '#services/call.ts';
+import { showTalkingScreen } from '#ui/talking-screen.ts';
+
+const HTTP_STATUS_REQUEST_TIMEOUT = 408;
 
 export const listen = buildCommand({
   docs: {
@@ -23,18 +27,49 @@ export const listen = buildCommand({
       return;
     }
 
-    const name = this.config.name;
-    this.process.stdout.write(`\n  Listening as ${name} in room ${room.code}...\n`);
+    this.process.stdout.write(`\n  Listening as ${this.config.name} in room ${room.code}...\n`);
     this.process.stdout.write('  Waiting for incoming calls. Ctrl+C to stop.\n\n');
 
-    // TODO: Long poll for incoming calls
-    // When a call comes in:
-    //   1. Show notification
-    //   2. Start WebRTC connection
-    //   3. Show talking screen
-    await new Promise<void>((resolve) => {
-      process.once('SIGINT', resolve);
-      process.once('SIGTERM', resolve);
+    let stopped = false;
+    process.once('SIGINT', () => {
+      stopped = true;
     });
+
+    while (!stopped) {
+      try {
+        const { data, error } = await this.api('/rooms/:code/calls/poll', {
+          params: { code: room.code },
+          headers: { 'psst-peer-id': room.peerId },
+          signal: AbortSignal.timeout(35_000),
+        });
+
+        if (error) {
+          if (error.status === HTTP_STATUS_REQUEST_TIMEOUT) {
+            continue;
+          }
+          break;
+        }
+
+        this.process.stdout.write(`\n  Incoming call from ${data.from}!\n`);
+
+        const call = await answerCall({
+          api: this.api,
+          roomCode: room.code,
+          myPeerId: room.peerId,
+          callerPeerId: data.from,
+          offer: data.offer,
+        });
+
+        await showTalkingScreen(call.peer);
+        call.stop();
+
+        this.process.stdout.write('\n  Call ended. Listening again...\n\n');
+      } catch {
+        if (stopped) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 5_000));
+      }
+    }
   },
 } satisfies Parameters<typeof buildCommand<Record<string, never>, [], AppContext>>[0]);

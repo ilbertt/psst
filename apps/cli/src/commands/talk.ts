@@ -50,18 +50,16 @@ export const talk = buildCommand({
       return;
     }
 
-    const screen = await showTalkingScreen(peer);
-    const call = await startCall(peer);
+    this.process.stdout.write(`\n  Calling ${peer.name}...\n`);
 
-    await new Promise<void>((resolve) => {
-      const cleanup = () => {
-        call.stop();
-        screen.destroy();
-        resolve();
-      };
-
-      process.once('SIGINT', cleanup);
-      process.once('SIGTERM', cleanup);
+    const call = await startCall({
+      api: this.api,
+      roomCode: room.code,
+      myPeerId: room.peerId,
+      peer,
     });
+
+    await showTalkingScreen(peer);
+    call.stop();
   },
 } satisfies Parameters<typeof buildCommand<Record<string, never>, [], AppContext>>[0]);

@@ -6,6 +6,7 @@ import { joinRoom } from '#commands/room/join.ts';
 import { leaveRoom } from '#commands/room/leave.ts';
 import { talk } from '#commands/talk.ts';
 import { createContext } from '#context.ts';
+import { promptForName } from '#ui/setup-prompt.ts';
 
 const roomRoutes = buildRouteMap({
   routes: {
@@ -48,4 +49,14 @@ const app = buildApplication(root, {
   },
 });
 
-await run(app, process.argv.slice(2), createContext());
+const ctx = createContext();
+
+if (ctx.config.needsSetup) {
+  const name = await promptForName();
+  if (!name) {
+    process.exit(0);
+  }
+  ctx.config.update({ name });
+}
+
+await run(app, process.argv.slice(2), ctx);

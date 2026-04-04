@@ -18,7 +18,7 @@ interface RoomData {
 
 const DEFAULTS: ConfigData = {
   serverUrl: 'http://localhost:3000',
-  name: 'Anonymous',
+  name: '',
 };
 
 export type ConfigKey = keyof ConfigData;
@@ -44,6 +44,10 @@ export class ConfigManager {
 
   get name(): string {
     return this.data.name;
+  }
+
+  get needsSetup(): boolean {
+    return this.data.name === '';
   }
 
   update(partial: Partial<ConfigData>): void {

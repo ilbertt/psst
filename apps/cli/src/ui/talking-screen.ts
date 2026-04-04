@@ -10,11 +10,7 @@ const WAVE_FRAMES = [
   '  ·   ))         (( ·  ',
 ];
 
-export interface TalkingScreenHandle {
-  destroy: () => void;
-}
-
-export async function showTalkingScreen(peer: Peer): Promise<TalkingScreenHandle> {
+export async function showTalkingScreen(peer: Peer): Promise<void> {
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,
     screenMode: 'alternate-screen',
@@ -46,7 +42,7 @@ export async function showTalkingScreen(peer: Peer): Promise<TalkingScreenHandle
     fg: '#ffffff',
   });
 
-  const timer = new TextRenderable(renderer, {
+  const timerText = new TextRenderable(renderer, {
     id: 'timer',
     content: '00:00',
     width: 30,
@@ -64,7 +60,7 @@ export async function showTalkingScreen(peer: Peer): Promise<TalkingScreenHandle
 
   container.add(waveText);
   container.add(label);
-  container.add(timer);
+  container.add(timerText);
   container.add(hint);
   renderer.root.add(container);
 
@@ -81,17 +77,20 @@ export async function showTalkingScreen(peer: Peer): Promise<TalkingScreenHandle
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
     const secs = String(elapsed % 60).padStart(2, '0');
-    timer.content = `${mins}:${secs}`;
+    timerText.content = `${mins}:${secs}`;
     renderer.requestRender();
   }, 1000);
 
   renderer.start();
 
-  return {
-    destroy: () => {
-      clearInterval(animInterval);
-      clearInterval(timerInterval);
-      renderer.destroy();
-    },
-  };
+  return new Promise<void>((resolve) => {
+    renderer.keyInput.on('keypress', (key) => {
+      if (key.ctrl && key.name === 'c') {
+        clearInterval(animInterval);
+        clearInterval(timerInterval);
+        renderer.destroy();
+        resolve();
+      }
+    });
+  });
 }

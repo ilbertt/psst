@@ -11,6 +11,7 @@ interface RoomServiceDeps {
 interface Resolver<T> {
   resolve: (value: T) => void;
   timer: Timer;
+  excludePeerId: string;
 }
 
 interface PeerInfo {
@@ -80,7 +81,7 @@ export class RoomService {
         resolve(null);
       }, POLL_TIMEOUT);
 
-      const resolver: Resolver<PeerInfo[]> = { resolve, timer };
+      const resolver: Resolver<PeerInfo[]> = { resolve, timer, excludePeerId };
 
       const pollers = this.peerPollers.get(room.id) ?? [];
       pollers.push(resolver);
@@ -98,11 +99,11 @@ export class RoomService {
       return;
     }
 
-    const peers = this.peerRepo.findByRoomId(roomId);
+    const allPeers = this.peerRepo.findByRoomId(roomId);
 
     for (const poller of pollers) {
       clearTimeout(poller.timer);
-      poller.resolve(peers);
+      poller.resolve(allPeers.filter((p) => p.id !== poller.excludePeerId));
     }
 
     this.peerPollers.delete(roomId);

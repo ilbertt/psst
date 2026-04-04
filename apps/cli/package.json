@@ -19,6 +19,7 @@
     "@opentui/core": "^0.1.96",
     "@repo/server": "workspace:*",
     "@stricli/core": "^1.2.6",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "werift": "^0.22.9"
   }
 }

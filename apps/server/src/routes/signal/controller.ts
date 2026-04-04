@@ -1,4 +1,5 @@
 import { Elysia, StatusMap, t } from 'elysia';
+import { PeerIdHeaderSchema, TimeoutResponseSchema } from '#lib/schemas.ts';
 import { SignalServicePlugin } from '#services/plugins.ts';
 import {
   answerBody,
@@ -7,8 +8,6 @@ import {
   callResponse,
   iceBody,
   icePollResponse,
-  peerIdHeader,
-  timeoutResponse,
 } from './model.ts';
 
 export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
@@ -17,7 +16,7 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
   .post(
     '/call/:peerId',
     async ({ signalService, params: { peerId }, body, headers, status }) => {
-      const callerId = headers['x-peer-id'];
+      const callerId = headers['psst-peer-id'];
       const result = await signalService.call({
         callerId,
         targetPeerId: peerId,
@@ -30,10 +29,10 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
     },
     {
       body: callBody,
-      headers: peerIdHeader,
+      headers: PeerIdHeaderSchema,
       response: {
         [StatusMap.OK]: callResponse,
-        [StatusMap['Request Timeout']]: timeoutResponse,
+        [StatusMap['Request Timeout']]: TimeoutResponseSchema,
       },
     },
   )
@@ -41,7 +40,7 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
   .get(
     '/calls/poll',
     async ({ signalService, headers, status }) => {
-      const peerId = headers['x-peer-id'];
+      const peerId = headers['psst-peer-id'];
       const result = await signalService.pollCalls(peerId);
       if (!result) {
         return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
@@ -49,10 +48,10 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
       return status(StatusMap.OK, result);
     },
     {
-      headers: peerIdHeader,
+      headers: PeerIdHeaderSchema,
       response: {
         [StatusMap.OK]: callPollResponse,
-        [StatusMap['Request Timeout']]: timeoutResponse,
+        [StatusMap['Request Timeout']]: TimeoutResponseSchema,
       },
     },
   )
@@ -70,7 +69,7 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
       body: answerBody,
       response: {
         [StatusMap['No Content']]: t.Undefined(),
-        [StatusMap['Request Timeout']]: timeoutResponse,
+        [StatusMap['Request Timeout']]: TimeoutResponseSchema,
       },
     },
   )
@@ -78,7 +77,7 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
   .post(
     '/ice/:peerId',
     ({ signalService, params: { peerId }, body, headers, status }) => {
-      const fromId = headers['x-peer-id'];
+      const fromId = headers['psst-peer-id'];
       signalService.sendIce({
         fromPeerId: fromId,
         targetPeerId: peerId,
@@ -88,7 +87,7 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
     },
     {
       body: iceBody,
-      headers: peerIdHeader,
+      headers: PeerIdHeaderSchema,
       response: { [StatusMap['No Content']]: t.Undefined() },
     },
   )
@@ -96,7 +95,7 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
   .get(
     '/ice/poll',
     async ({ signalService, headers, status }) => {
-      const peerId = headers['x-peer-id'];
+      const peerId = headers['psst-peer-id'];
       const result = await signalService.pollIce(peerId);
       if (!result) {
         return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
@@ -104,10 +103,10 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
       return status(StatusMap.OK, result);
     },
     {
-      headers: peerIdHeader,
+      headers: PeerIdHeaderSchema,
       response: {
         [StatusMap.OK]: icePollResponse,
-        [StatusMap['Request Timeout']]: timeoutResponse,
+        [StatusMap['Request Timeout']]: TimeoutResponseSchema,
       },
     },
   );

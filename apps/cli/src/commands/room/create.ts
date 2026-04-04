@@ -9,15 +9,30 @@ export const createRoom = buildCommand({
   parameters: { flags: {} },
   // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags) {
-    const { data, error } = await this.api('/rooms', { method: 'POST', body: {} });
+    const { data: room, error: createError } = await this.api('/rooms', {
+      method: 'POST',
+      body: {},
+    });
 
-    if (error) {
-      this.process.stderr.write(`Failed to create room: ${formatEdenError(error)}\n`);
+    if (createError) {
+      this.process.stderr.write(`Failed to create room: ${formatEdenError(createError)}\n`);
       return;
     }
 
-    this.config.setCurrentRoom(data.code);
+    const displayName = this.config.name;
+    const { data: joined, error: joinError } = await this.api('/rooms/:code/join', {
+      method: 'POST',
+      params: { code: room.code },
+      body: { name: displayName },
+    });
+
+    if (joinError) {
+      this.process.stderr.write(`Failed to join room: ${formatEdenError(joinError)}\n`);
+      return;
+    }
+
+    this.config.setCurrentRoom({ code: room.code, peerId: joined.peerId });
     this.process.stdout.write(`\n  Room created!\n`);
-    this.process.stdout.write(`  Share this code: ${data.code}\n\n`);
+    this.process.stdout.write(`  Share this code: ${room.code}\n\n`);
   },
 } satisfies Parameters<typeof buildCommand<Record<string, never>, [], AppContext>>[0]);

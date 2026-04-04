@@ -9,8 +9,8 @@ export const listen = buildCommand({
   parameters: { flags: {} },
   // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags) {
-    const roomCode = this.config.getCurrentRoom();
-    if (!roomCode) {
+    const room = this.config.getCurrentRoom();
+    if (!room) {
       this.process.stderr.write("Not in a room. Run 'psst room join <code>' first.\n");
       return;
     }
@@ -23,8 +23,8 @@ export const listen = buildCommand({
       return;
     }
 
-    const name = this.config.get('name') ?? 'Anonymous';
-    this.process.stdout.write(`\n  Listening as ${name} in room ${roomCode}...\n`);
+    const name = this.config.name;
+    this.process.stdout.write(`\n  Listening as ${name} in room ${room.code}...\n`);
     this.process.stdout.write('  Waiting for incoming calls. Ctrl+C to stop.\n\n');
 
     // TODO: Long poll for incoming calls

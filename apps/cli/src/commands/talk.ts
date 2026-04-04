@@ -13,8 +13,8 @@ export const talk = buildCommand({
   parameters: { flags: {} },
   // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags) {
-    const roomCode = this.config.getCurrentRoom();
-    if (!roomCode) {
+    const room = this.config.getCurrentRoom();
+    if (!room) {
       this.process.stderr.write("Not in a room. Run 'psst room join <code>' first.\n");
       return;
     }
@@ -35,7 +35,8 @@ export const talk = buildCommand({
 
     const members = await waitForPeers({
       api: this.api,
-      roomCode,
+      roomCode: room.code,
+      peerId: room.peerId,
       signal: abort.signal,
     });
 

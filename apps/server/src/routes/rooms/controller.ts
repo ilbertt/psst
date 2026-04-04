@@ -1,5 +1,6 @@
 import { Elysia, StatusMap } from 'elysia';
-import { RoomServicePlugin } from '#services/plugins.ts';
+import { PeerIdHeaderSchema, TimeoutResponseSchema } from '#lib/schemas.ts';
+import { LoggerPlugin, RoomServicePlugin } from '#services/plugins.ts';
 import {
   createRoomBody,
   joinResponse,
@@ -10,6 +11,7 @@ import {
 
 export const roomRoutes = new Elysia({ prefix: '/rooms' })
   .use(RoomServicePlugin)
+  .use(LoggerPlugin)
 
   .post(
     '/',
@@ -26,14 +28,32 @@ export const roomRoutes = new Elysia({ prefix: '/rooms' })
 
   .get(
     '/:code/peers',
-    ({ roomService, params: { code }, status }) => {
-      const peers = roomService.peers(code);
+    async ({ roomService, params: { code }, headers, request, server, logger, status }) => {
+      if (server) {
+        server.timeout(request, 0);
+      }
+
+      const peerId = headers['psst-peer-id'];
+      logger.info(`peers poll parked peer_id=${peerId} room=${code}`);
+
+      const result = await roomService.pollPeers({ code, excludePeerId: peerId });
+
+      if (result === null) {
+        return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      }
+
       return status(
         StatusMap.OK,
-        peers.map((p) => ({ id: p.id, name: p.name, joinedAt: p.joined_at })),
+        result.map((p) => ({ id: p.id, name: p.name, joinedAt: p.joined_at })),
       );
     },
-    { response: { [StatusMap.OK]: peersResponse } },
+    {
+      headers: PeerIdHeaderSchema,
+      response: {
+        [StatusMap.OK]: peersResponse,
+        [StatusMap['Request Timeout']]: TimeoutResponseSchema,
+      },
+    },
   )
 
   .post(

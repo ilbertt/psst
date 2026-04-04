@@ -26,7 +26,7 @@ export const joinRoom = buildCommand({
   },
   // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags, code) {
-    const displayName = this.config.get('name') ?? 'Anonymous';
+    const displayName = this.config.name;
     const { data, error } = await this.api('/rooms/:code/join', {
       method: 'POST',
       params: { code },
@@ -38,8 +38,7 @@ export const joinRoom = buildCommand({
       return;
     }
 
-    this.config.setCurrentRoom(code);
-    this.config.set({ key: 'peerId', value: data.peerId });
+    this.config.setCurrentRoom({ code, peerId: data.peerId });
     this.process.stdout.write(`\n  Joined room: ${code}\n`);
     this.process.stdout.write("  Run 'psst talk' to start chatting.\n\n");
   },

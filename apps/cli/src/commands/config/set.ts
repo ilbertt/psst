@@ -1,5 +1,6 @@
 import { buildCommand } from '@stricli/core';
 import type { AppContext } from '#context.ts';
+import { ConfigManager } from '#services/config-manager.ts';
 
 export const configSet = buildCommand({
   docs: {
@@ -20,14 +21,20 @@ export const configSet = buildCommand({
     positional: {
       kind: 'tuple',
       parameters: [
-        { brief: 'Config key', parse: String },
+        { brief: `Config key (${ConfigManager.validKeys.join(', ')})`, parse: String },
         { brief: 'Config value', parse: String },
       ],
     },
   },
   // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags, key, value) {
-    this.config.set({ key, value });
+    if (!ConfigManager.isValidKey(key)) {
+      this.process.stderr.write(`Unknown config key: ${key}\n`);
+      this.process.stderr.write(`Valid keys: ${ConfigManager.validKeys.join(', ')}\n`);
+      return;
+    }
+
+    this.config.update({ [key]: value });
     this.process.stdout.write(`  ${key} = ${value}\n`);
   },
 } satisfies Parameters<

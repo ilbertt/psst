@@ -1,9 +1,5 @@
 import { t } from 'elysia';
 
-export const peerIdHeader = t.Object({
-  'x-peer-id': t.String(),
-});
-
 export const callBody = t.Object({
   offer: t.Unknown(),
 });
@@ -28,8 +24,4 @@ export const iceBody = t.Object({
 export const icePollResponse = t.Object({
   from: t.String(),
   candidate: t.Unknown(),
-});
-
-export const timeoutResponse = t.Object({
-  status: t.Literal('timeout'),
 });

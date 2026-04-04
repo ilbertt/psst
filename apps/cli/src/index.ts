@@ -2,7 +2,6 @@ import { buildApplication, buildRouteMap, run } from '@stricli/core';
 import { configSet } from '#commands/config/set.ts';
 import { listen } from '#commands/listen.ts';
 import { createRoom } from '#commands/room/create.ts';
-import { roomInfo } from '#commands/room/info.ts';
 import { joinRoom } from '#commands/room/join.ts';
 import { leaveRoom } from '#commands/room/leave.ts';
 import { talk } from '#commands/talk.ts';
@@ -13,7 +12,6 @@ const roomRoutes = buildRouteMap({
     create: createRoom,
     join: joinRoom,
     leave: leaveRoom,
-    info: roomInfo,
   },
   defaultCommand: 'create',
   docs: {

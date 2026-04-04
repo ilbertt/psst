@@ -8,13 +8,13 @@ export const leaveRoom = buildCommand({
   parameters: { flags: {} },
   // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags) {
-    const roomCode = this.config.getCurrentRoom();
-    if (!roomCode) {
+    const room = this.config.getCurrentRoom();
+    if (!room) {
       this.process.stderr.write('Not in a room.\n');
       return;
     }
 
     this.config.clearCurrentRoom();
-    this.process.stdout.write(`\n  Left room ${roomCode}.\n\n`);
+    this.process.stdout.write(`\n  Left room ${room.code}.\n\n`);
   },
 } satisfies Parameters<typeof buildCommand<Record<string, never>, [], AppContext>>[0]);

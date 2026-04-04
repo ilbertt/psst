@@ -8,9 +8,23 @@ interface RoomServiceDeps {
   peerRepo: PeerRepository;
 }
 
+interface Resolver<T> {
+  resolve: (value: T) => void;
+  timer: Timer;
+}
+
+interface PeerInfo {
+  id: string;
+  name: string;
+  joined_at: string;
+}
+
+const POLL_TIMEOUT = 30_000;
+
 export class RoomService {
   private roomRepo: RoomRepository;
   private peerRepo: PeerRepository;
+  private peerPollers = new Map<string, Resolver<PeerInfo[]>[]>();
 
   constructor({ roomRepo, peerRepo }: RoomServiceDeps) {
     this.roomRepo = roomRepo;
@@ -30,7 +44,9 @@ export class RoomService {
     }
 
     const id = Bun.randomUUIDv7();
-    return this.peerRepo.create({ id, roomId: room.id, name });
+    const peer = this.peerRepo.create({ id, roomId: room.id, name });
+    this.notifyPeerChange(room.id);
+    return peer;
   }
 
   peers(code: string) {
@@ -41,7 +57,70 @@ export class RoomService {
     return this.peerRepo.findByRoomId(room.id);
   }
 
+  pollPeers({
+    code,
+    excludePeerId,
+  }: {
+    code: string;
+    excludePeerId: string;
+  }): Promise<PeerInfo[] | null> {
+    const room = this.roomRepo.findByCode(code);
+    if (!room) {
+      throw new NotFoundError('Room not found');
+    }
+
+    const currentPeers = this.peerRepo.findByRoomId(room.id).filter((p) => p.id !== excludePeerId);
+    if (currentPeers.length > 0) {
+      return Promise.resolve(currentPeers);
+    }
+
+    return new Promise<PeerInfo[] | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.removePoller({ roomId: room.id, resolver });
+        resolve(null);
+      }, POLL_TIMEOUT);
+
+      const resolver: Resolver<PeerInfo[]> = { resolve, timer };
+
+      const pollers = this.peerPollers.get(room.id) ?? [];
+      pollers.push(resolver);
+      this.peerPollers.set(room.id, pollers);
+    });
+  }
+
   leave(peerId: string) {
     this.peerRepo.delete(peerId);
+  }
+
+  private notifyPeerChange(roomId: string) {
+    const pollers = this.peerPollers.get(roomId);
+    if (!pollers || pollers.length === 0) {
+      return;
+    }
+
+    const peers = this.peerRepo.findByRoomId(roomId);
+
+    for (const poller of pollers) {
+      clearTimeout(poller.timer);
+      poller.resolve(peers);
+    }
+
+    this.peerPollers.delete(roomId);
+  }
+
+  private removePoller({ roomId, resolver }: { roomId: string; resolver: Resolver<PeerInfo[]> }) {
+    const pollers = this.peerPollers.get(roomId);
+    if (!pollers) {
+      return;
+    }
+
+    const idx = pollers.indexOf(resolver);
+    if (idx !== -1) {
+      pollers.splice(idx, 1);
+    }
+
+    if (pollers.length === 0) {
+      this.peerPollers.delete(roomId);
+    }
   }
 }

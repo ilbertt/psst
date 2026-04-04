@@ -18,6 +18,8 @@ Bun + TypeScript monorepo (`apps/cli`, `apps/server`, `packages/*`).
 
 - No comments that restate what types and naming already say — only comment the non-obvious
 - Imports use `#*` subpath mapping (e.g. `import { foo } from '#services/foo'`)
+- Single source of truth — never duplicate keys, enum values, or type info that belongs to a class/module; derive from the source instead
+- Biome enforces `useMaxParams: 1` — use `biome-ignore` only for Stricli `func` signatures (framework-mandated)
 
 ## Validation
 

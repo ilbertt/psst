@@ -6,6 +6,7 @@ export const roomInfo = buildCommand({
     brief: 'Show current room info',
   },
   parameters: { flags: {} },
+  // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags) {
     const roomCode = this.config.getCurrentRoom();
     if (!roomCode) {

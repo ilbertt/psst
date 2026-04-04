@@ -23,6 +23,14 @@
     "enabled": true,
     "rules": {
       "recommended": true,
+      "complexity": {
+        "useMaxParams": {
+          "level": "error",
+          "options": {
+            "max": 1
+          }
+        }
+      },
       "style": {
         "noNonNullAssertion": "off"
       }

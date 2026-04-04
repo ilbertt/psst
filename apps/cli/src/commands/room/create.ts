@@ -6,6 +6,7 @@ export const createRoom = buildCommand({
     brief: 'Create a new room and get a share code',
   },
   parameters: { flags: {} },
+  // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags) {
     const room = await this.api.createRoom();
     this.config.setCurrentRoom(room.code);

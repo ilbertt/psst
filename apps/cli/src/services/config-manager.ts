@@ -32,7 +32,7 @@ export class ConfigManager {
     return this.data[key];
   }
 
-  set(key: string, value: string): void {
+  set({ key, value }: { key: string; value: string }): void {
     this.data[key] = value;
     writeFileSync(CONFIG_FILE, JSON.stringify(this.data, null, 2));
   }

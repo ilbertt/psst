@@ -25,8 +25,9 @@ export const configSet = buildCommand({
       ],
     },
   },
+  // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags, key, value) {
-    this.config.set(key, value);
+    this.config.set({ key, value });
     this.process.stdout.write(`  ${key} = ${value}\n`);
   },
 } satisfies Parameters<

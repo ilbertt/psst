@@ -1,13 +1,10 @@
 import { buildCommand } from '@stricli/core';
 import type { AppContext } from '#context.ts';
 import { checkFfmpeg } from '#services/audio.ts';
-import { startCall } from '#services/call.ts';
-import { showPeerSelect } from '#ui/peer-select.ts';
-import { showTalkingScreen } from '#ui/talking-screen.ts';
 
-export const talk = buildCommand({
+export const listen = buildCommand({
   docs: {
-    brief: 'Start a voice chat with someone in your room',
+    brief: 'Listen for incoming calls',
   },
   parameters: { flags: {} },
   // biome-ignore lint/complexity/useMaxParams: Stricli func signature
@@ -26,28 +23,15 @@ export const talk = buildCommand({
       return;
     }
 
-    const members = await this.api.getRoomMembers(roomCode);
-    if (members.length === 0) {
-      this.process.stdout.write('\n  No one else is in the room yet.\n\n');
-      return;
-    }
+    const name = this.config.get('name') ?? 'Anonymous';
+    this.process.stdout.write(`\n  Listening as ${name} in room ${roomCode}...\n`);
+    this.process.stdout.write('  Waiting for incoming calls. Ctrl+C to stop.\n\n');
 
-    const peer = await showPeerSelect(members);
-    if (!peer) return;
-
-    const screen = await showTalkingScreen(peer);
-    const call = await startCall(peer);
-
-    // Wait for Ctrl+C
-    const cleanup = () => {
-      call.stop();
-      screen.destroy();
-    };
-
-    process.once('SIGINT', cleanup);
-    process.once('SIGTERM', cleanup);
-
-    // Keep alive until signal
+    // TODO: Long poll for incoming calls
+    // When a call comes in:
+    //   1. Show notification
+    //   2. Start WebRTC connection
+    //   3. Show talking screen
     await new Promise<void>((resolve) => {
       process.once('SIGINT', resolve);
       process.once('SIGTERM', resolve);

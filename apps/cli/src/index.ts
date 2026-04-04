@@ -1,5 +1,6 @@
 import { buildApplication, buildRouteMap, run } from '@stricli/core';
 import { configSet } from '#commands/config/set.ts';
+import { listen } from '#commands/listen.ts';
 import { createRoom } from '#commands/room/create.ts';
 import { roomInfo } from '#commands/room/info.ts';
 import { joinRoom } from '#commands/room/join.ts';
@@ -34,7 +35,9 @@ const root = buildRouteMap({
     room: roomRoutes,
     config: configRoutes,
     talk,
+    listen,
   },
+  defaultCommand: 'talk',
   docs: {
     brief: 'P2P voice chat for coworkers',
   },

@@ -13,10 +13,10 @@ export class ApiClient {
     return room;
   }
 
-  async joinRoom(code: string, _displayName: string): Promise<Room> {
+  async joinRoom(params: { code: string; displayName: string }): Promise<Room> {
     // TODO: Replace with actual server call
     const room: Room = {
-      code,
+      code: params.code,
       name: 'Room',
       createdAt: new Date().toISOString(),
     };

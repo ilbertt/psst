@@ -37,3 +37,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # bun
 *.bun-build
+
+# sqlite
+*.db
+*.db-wal
+*.db-shm

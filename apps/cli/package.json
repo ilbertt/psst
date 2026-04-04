@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "bun build:darwin-arm64",
-    "build:darwin-arm64": "bun build src/index.ts --compile --minify --bytecode --target=bun-darwin-arm64 --outfile dist/psst",
+    "build:darwin-arm64": "bun build src/index.ts --compile --minify --bytecode --format=esm --target=bun-darwin-arm64 --outfile dist/psst",
     "check:types": "bun run --bun tsc"
   },
   "devDependencies": {
@@ -13,5 +13,10 @@
   },
   "imports": {
     "#*": "./src/*"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.96",
+    "@stricli/core": "^1.2.6",
+    "picocolors": "^1.1.1"
   }
 }

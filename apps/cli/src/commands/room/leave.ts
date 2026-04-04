@@ -14,9 +14,7 @@ export const leaveRoom = buildCommand({
       return;
     }
 
-    await this.api.leaveRoom(roomCode);
     this.config.clearCurrentRoom();
-
     this.process.stdout.write(`\n  Left room ${roomCode}.\n\n`);
   },
 } satisfies Parameters<typeof buildCommand<Record<string, never>, [], AppContext>>[0]);

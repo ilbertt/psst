@@ -1,5 +1,6 @@
 import { buildCommand } from '@stricli/core';
 import type { AppContext } from '#context.ts';
+import { formatEdenError } from '#services/api-client.ts';
 
 export const roomInfo = buildCommand({
   docs: {
@@ -14,11 +15,18 @@ export const roomInfo = buildCommand({
       return;
     }
 
-    const members = await this.api.getRoomMembers(roomCode);
+    const { data, error } = await this.api('/rooms/:code/peers', {
+      params: { code: roomCode },
+    });
+
+    if (error) {
+      this.process.stderr.write(`Failed to get room info: ${formatEdenError(error)}\n`);
+      return;
+    }
 
     this.process.stdout.write(`\n  Room: ${roomCode}\n`);
-    this.process.stdout.write(`  Members (${members.length}):\n`);
-    for (const member of members) {
+    this.process.stdout.write(`  Members (${data.length}):\n`);
+    for (const member of data) {
       this.process.stdout.write(`    - ${member.name}\n`);
     }
     this.process.stdout.write('\n');

@@ -15,7 +15,9 @@
     "#*": "./src/*"
   },
   "dependencies": {
+    "@elysiajs/eden": "^1.4.8",
     "@opentui/core": "^0.1.96",
+    "@repo/server": "workspace:*",
     "@stricli/core": "^1.2.6",
     "picocolors": "^1.1.1"
   }

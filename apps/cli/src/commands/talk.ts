@@ -1,5 +1,6 @@
 import { buildCommand } from '@stricli/core';
 import type { AppContext } from '#context.ts';
+import { formatEdenError } from '#services/api-client.ts';
 import { checkFfmpeg } from '#services/audio.ts';
 import { startCall } from '#services/call.ts';
 import { showPeerSelect } from '#ui/peer-select.ts';
@@ -26,7 +27,15 @@ export const talk = buildCommand({
       return;
     }
 
-    const members = await this.api.getRoomMembers(roomCode);
+    const { data: members, error } = await this.api('/rooms/:code/peers', {
+      params: { code: roomCode },
+    });
+
+    if (error) {
+      this.process.stderr.write(`Failed to get peers: ${formatEdenError(error)}\n`);
+      return;
+    }
+
     if (members.length === 0) {
       this.process.stdout.write('\n  No one else is in the room yet.\n\n');
       return;

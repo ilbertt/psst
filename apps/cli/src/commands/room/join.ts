@@ -1,5 +1,6 @@
 import { buildCommand } from '@stricli/core';
 import type { AppContext } from '#context.ts';
+import { formatEdenError } from '#services/api-client.ts';
 
 export const joinRoom = buildCommand({
   docs: {
@@ -26,9 +27,19 @@ export const joinRoom = buildCommand({
   // biome-ignore lint/complexity/useMaxParams: Stricli func signature
   async func(this: AppContext, _flags, code) {
     const displayName = this.config.get('name') ?? 'Anonymous';
-    await this.api.joinRoom({ code, displayName });
-    this.config.setCurrentRoom(code);
+    const { data, error } = await this.api('/rooms/:code/join', {
+      method: 'POST',
+      params: { code },
+      body: { name: displayName },
+    });
 
+    if (error) {
+      this.process.stderr.write(`Failed to join room: ${formatEdenError(error)}\n`);
+      return;
+    }
+
+    this.config.setCurrentRoom(code);
+    this.config.set({ key: 'peerId', value: data.peerId });
     this.process.stdout.write(`\n  Joined room: ${code}\n`);
     this.process.stdout.write("  Run 'psst talk' to start chatting.\n\n");
   },

@@ -18,10 +18,39 @@ function setupAudioReceiver({
   pc: RTCPeerConnection;
   playback: ReturnType<typeof startPlayback>;
 }) {
-  pc.onTrack.subscribe((e) => {
-    e.track.onReceiveRtp.subscribe((rtp) => {
-      // TODO: decode Opus RTP → PCM
-      playback.write(new Uint8Array(rtp.serialize()));
+  pc.onTrack.subscribe((track) => {
+    track.onReceiveRtp.subscribe((rtp) => {
+      playback.write(new Uint8Array(rtp.payload));
+    });
+  });
+}
+
+function createPeerConnection(): RTCPeerConnection {
+  return new RTCPeerConnection({ iceServers: ICE_SERVERS });
+}
+
+function setupIceSending({
+  pc,
+  api,
+  roomCode,
+  myPeerId,
+  targetPeerId,
+}: {
+  pc: RTCPeerConnection;
+  api: AppContext['api'];
+  roomCode: string;
+  myPeerId: string;
+  targetPeerId: string;
+}) {
+  pc.onIceCandidate.subscribe((candidate) => {
+    if (!candidate) {
+      return;
+    }
+    api('/rooms/:code/ice/:peerId', {
+      method: 'POST',
+      params: { code: roomCode, peerId: targetPeerId },
+      headers: { 'psst-peer-id': myPeerId },
+      body: { candidate: candidate.toJSON() },
     });
   });
 }
@@ -37,21 +66,13 @@ export async function startCall({
   myPeerId: string;
   peer: Peer;
 }): Promise<ActiveCall> {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = createPeerConnection();
   const capture = startCapture();
   const playback = startPlayback();
 
   pc.addTrack(new MediaStreamTrack({ kind: 'audio' }));
   setupAudioReceiver({ pc, playback });
-
-  pc.onIceCandidate.subscribe((candidate) => {
-    api('/rooms/:code/ice/:peerId', {
-      method: 'POST',
-      params: { code: roomCode, peerId: peer.id },
-      headers: { 'psst-peer-id': myPeerId },
-      body: { candidate: candidate.toJSON() },
-    });
-  });
+  setupIceSending({ pc, api, roomCode, myPeerId, targetPeerId: peer.id });
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -99,21 +120,13 @@ export async function answerCall({
   callerPeerId: string;
   offer: unknown;
 }): Promise<ActiveCall> {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = createPeerConnection();
   const capture = startCapture();
   const playback = startPlayback();
 
   pc.addTrack(new MediaStreamTrack({ kind: 'audio' }));
   setupAudioReceiver({ pc, playback });
-
-  pc.onIceCandidate.subscribe((candidate) => {
-    api('/rooms/:code/ice/:peerId', {
-      method: 'POST',
-      params: { code: roomCode, peerId: callerPeerId },
-      headers: { 'psst-peer-id': myPeerId },
-      body: { candidate: candidate.toJSON() },
-    });
-  });
+  setupIceSending({ pc, api, roomCode, myPeerId, targetPeerId: callerPeerId });
 
   // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
   await pc.setRemoteDescription(offer as any);
@@ -149,7 +162,14 @@ async function pollIceCandidates({
   myPeerId: string;
   pc: RTCPeerConnection;
 }) {
-  while (pc.connectionState !== 'closed') {
+  let active = true;
+  pc.connectionStateChange.subscribe((state) => {
+    if (state === 'closed' || state === 'failed' || state === 'disconnected') {
+      active = false;
+    }
+  });
+
+  while (active) {
     try {
       const { data, error } = await api('/rooms/:code/ice/poll', {
         params: { code: roomCode },
@@ -167,9 +187,7 @@ async function pollIceCandidates({
       // biome-ignore lint/suspicious/noExplicitAny: werift expects its own ICE type
       await pc.addIceCandidate(data.candidate as any);
     } catch {
-      if (pc.connectionState === 'closed') {
-        break;
-      }
+      break;
     }
   }
 }

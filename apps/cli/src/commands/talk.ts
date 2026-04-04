@@ -1,8 +1,8 @@
 import { buildCommand } from '@stricli/core';
 import type { AppContext } from '#context.ts';
-import { formatEdenError } from '#services/api-client.ts';
 import { checkFfmpeg } from '#services/audio.ts';
 import { startCall } from '#services/call.ts';
+import { waitForPeers } from '#services/peer-poller.ts';
 import { showPeerSelect } from '#ui/peer-select.ts';
 import { showTalkingScreen } from '#ui/talking-screen.ts';
 
@@ -27,22 +27,27 @@ export const talk = buildCommand({
       return;
     }
 
-    const { data: members, error } = await this.api('/rooms/:code/peers', {
-      params: { code: roomCode },
+    this.process.stdout.write('\n  Waiting for peers...\n');
+
+    const abort = new AbortController();
+    const onCancel = () => abort.abort();
+    process.once('SIGINT', onCancel);
+
+    const members = await waitForPeers({
+      api: this.api,
+      roomCode,
+      signal: abort.signal,
     });
 
-    if (error) {
-      this.process.stderr.write(`Failed to get peers: ${formatEdenError(error)}\n`);
-      return;
-    }
-
+    process.removeListener('SIGINT', onCancel);
     if (members.length === 0) {
-      this.process.stdout.write('\n  No one else is in the room yet.\n\n');
       return;
     }
 
     const peer = await showPeerSelect(members);
-    if (!peer) return;
+    if (!peer) {
+      return;
+    }
 
     const screen = await showTalkingScreen(peer);
     const call = await startCall(peer);

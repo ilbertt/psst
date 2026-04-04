@@ -38,19 +38,15 @@ export const talk = buildCommand({
     const screen = await showTalkingScreen(peer);
     const call = await startCall(peer);
 
-    // Wait for Ctrl+C
-    const cleanup = () => {
-      call.stop();
-      screen.destroy();
-    };
-
-    process.once('SIGINT', cleanup);
-    process.once('SIGTERM', cleanup);
-
-    // Keep alive until signal
     await new Promise<void>((resolve) => {
-      process.once('SIGINT', resolve);
-      process.once('SIGTERM', resolve);
+      const cleanup = () => {
+        call.stop();
+        screen.destroy();
+        resolve();
+      };
+
+      process.once('SIGINT', cleanup);
+      process.once('SIGTERM', cleanup);
     });
   },
 } satisfies Parameters<typeof buildCommand<Record<string, never>, [], AppContext>>[0]);

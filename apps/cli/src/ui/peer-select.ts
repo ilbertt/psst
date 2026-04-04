@@ -9,7 +9,7 @@ import type { Peer } from '#types.ts';
 
 export async function showPeerSelect(peers: Peer[]): Promise<Peer | null> {
   const renderer = await createCliRenderer({
-    exitOnCtrlC: true,
+    exitOnCtrlC: false,
     screenMode: 'alternate-screen',
   });
 
@@ -64,6 +64,13 @@ export async function showPeerSelect(peers: Peer[]): Promise<Peer | null> {
       const peer = peers[index];
       renderer.destroy();
       resolve(peer ?? null);
+    });
+
+    renderer.keyInput.on('keypress', (key) => {
+      if (key.ctrl && key.name === 'c') {
+        renderer.destroy();
+        resolve(null);
+      }
     });
 
     renderer.start();

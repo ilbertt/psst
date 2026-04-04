@@ -38,7 +38,9 @@ export class ConfigManager {
   }
 
   getCurrentRoom(): string | null {
-    if (!existsSync(ROOM_FILE)) return null;
+    if (!existsSync(ROOM_FILE)) {
+      return null;
+    }
     const data: RoomData = JSON.parse(readFileSync(ROOM_FILE, 'utf-8'));
     return data.code ?? null;
   }

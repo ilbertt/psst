@@ -23,7 +23,9 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
         targetPeerId: peerId,
         offer: body.offer,
       });
-      if (!result) return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      if (!result) {
+        return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      }
       return status(StatusMap.OK, result);
     },
     {
@@ -41,7 +43,9 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
     async ({ signalService, headers, status }) => {
       const peerId = headers['x-peer-id'];
       const result = await signalService.pollCalls(peerId);
-      if (!result) return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      if (!result) {
+        return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      }
       return status(StatusMap.OK, result);
     },
     {
@@ -57,7 +61,9 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
     '/calls/answer/:peerId',
     ({ signalService, params: { peerId }, body, status }) => {
       const ok = signalService.answer({ callerPeerId: peerId, answer: body.answer });
-      if (!ok) return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      if (!ok) {
+        return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      }
       return status(StatusMap['No Content'], undefined);
     },
     {
@@ -92,7 +98,9 @@ export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
     async ({ signalService, headers, status }) => {
       const peerId = headers['x-peer-id'];
       const result = await signalService.pollIce(peerId);
-      if (!result) return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      if (!result) {
+        return status(StatusMap['Request Timeout'], { status: 'timeout' as const });
+      }
       return status(StatusMap.OK, result);
     },
     {

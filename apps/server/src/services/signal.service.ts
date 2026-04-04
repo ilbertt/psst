@@ -78,7 +78,9 @@ export class SignalService {
 
   answer({ callerPeerId, answer }: { callerPeerId: string; answer: unknown }): boolean {
     const caller = this.callers.get(callerPeerId);
-    if (!caller) return false;
+    if (!caller) {
+      return false;
+    }
 
     clearTimeout(caller.timer);
     this.callers.delete(callerPeerId);
@@ -96,7 +98,9 @@ export class SignalService {
     candidate: unknown;
   }): boolean {
     const poller = this.icePollers.get(targetPeerId);
-    if (!poller) return false;
+    if (!poller) {
+      return false;
+    }
 
     clearTimeout(poller.timer);
     this.icePollers.delete(targetPeerId);

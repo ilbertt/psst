@@ -25,7 +25,9 @@ export class RoomService {
 
   join({ code, name }: { code: string; name: string }) {
     const room = this.roomRepo.findByCode(code);
-    if (!room) throw new NotFoundError('Room not found');
+    if (!room) {
+      throw new NotFoundError('Room not found');
+    }
 
     const id = Bun.randomUUIDv7();
     return this.peerRepo.create({ id, roomId: room.id, name });
@@ -33,7 +35,9 @@ export class RoomService {
 
   peers(code: string) {
     const room = this.roomRepo.findByCode(code);
-    if (!room) throw new NotFoundError('Room not found');
+    if (!room) {
+      throw new NotFoundError('Room not found');
+    }
     return this.peerRepo.findByRoomId(room.id);
   }
 

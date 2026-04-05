@@ -4,24 +4,18 @@ import { join } from 'node:path';
 
 const CONFIG_DIR = join(homedir(), '.config', 'psst');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
-const ROOM_FILE = join(CONFIG_DIR, 'room.json');
 
 export interface ConfigData {
   serverUrl: string;
   name: string;
 }
 
-interface RoomData {
-  code: string;
-  peerId: string;
-}
+export type ConfigKey = keyof ConfigData;
 
 const DEFAULTS: ConfigData = {
   serverUrl: 'http://localhost:3000',
-  name: '',
+  name: 'Anonymous',
 };
-
-export type ConfigKey = keyof ConfigData;
 
 export class ConfigManager {
   static readonly validKeys: ConfigKey[] = Object.keys(DEFAULTS) as ConfigKey[];
@@ -46,33 +40,16 @@ export class ConfigManager {
     return this.data.name;
   }
 
-  get needsSetup(): boolean {
-    return this.data.name === '';
+  get needsName(): boolean {
+    return this.data.name === DEFAULTS.name;
+  }
+
+  get all(): Readonly<ConfigData> {
+    return this.data;
   }
 
   update(partial: Partial<ConfigData>): void {
     Object.assign(this.data, partial);
     writeFileSync(CONFIG_FILE, JSON.stringify(this.data, null, 2));
-  }
-
-  getCurrentRoom(): RoomData | null {
-    if (!existsSync(ROOM_FILE)) {
-      return null;
-    }
-    const data = JSON.parse(readFileSync(ROOM_FILE, 'utf-8'));
-    if (!data.code || !data.peerId) {
-      return null;
-    }
-    return data as RoomData;
-  }
-
-  setCurrentRoom({ code, peerId }: RoomData): void {
-    writeFileSync(ROOM_FILE, JSON.stringify({ code, peerId }, null, 2));
-  }
-
-  clearCurrentRoom(): void {
-    if (existsSync(ROOM_FILE)) {
-      writeFileSync(ROOM_FILE, '{}');
-    }
   }
 }

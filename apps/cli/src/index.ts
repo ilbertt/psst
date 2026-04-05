@@ -1,29 +1,27 @@
 import { buildApplication, buildRouteMap, run } from '@stricli/core';
 import { configSet } from '#commands/config/set.ts';
-import { listen } from '#commands/listen.ts';
+import { configShow } from '#commands/config/show.ts';
 import { createRoom } from '#commands/room/create.ts';
 import { joinRoom } from '#commands/room/join.ts';
-import { leaveRoom } from '#commands/room/leave.ts';
-import { talk } from '#commands/talk.ts';
 import { createContext } from '#context.ts';
-import { promptForName } from '#ui/setup-prompt.ts';
 
 const roomRoutes = buildRouteMap({
   routes: {
     create: createRoom,
     join: joinRoom,
-    leave: leaveRoom,
   },
   defaultCommand: 'create',
   docs: {
-    brief: 'Create or manage rooms',
+    brief: 'Create or join a room',
   },
 });
 
 const configRoutes = buildRouteMap({
   routes: {
     set: configSet,
+    show: configShow,
   },
+  defaultCommand: 'show',
   docs: {
     brief: 'Manage configuration',
   },
@@ -33,12 +31,9 @@ const root = buildRouteMap({
   routes: {
     room: roomRoutes,
     config: configRoutes,
-    talk,
-    listen,
   },
-  defaultCommand: 'talk',
   docs: {
-    brief: 'P2P voice chat for coworkers',
+    brief: 'psst — tap someone on the shoulder',
   },
 });
 
@@ -49,14 +44,4 @@ const app = buildApplication(root, {
   },
 });
 
-const ctx = createContext();
-
-if (ctx.config.needsSetup) {
-  const name = await promptForName();
-  if (!name) {
-    process.exit(0);
-  }
-  ctx.config.update({ name });
-}
-
-await run(app, process.argv.slice(2), ctx);
+await run(app, process.argv.slice(2), createContext());

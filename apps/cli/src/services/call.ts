@@ -1,32 +1,58 @@
 import { MediaStreamTrack, RTCPeerConnection } from 'werift';
 import type { AppContext } from '#context.ts';
 import type { Peer } from '#types.ts';
-import { startCapture, startPlayback } from './audio.ts';
+import { listenForRtp, startCapture, startPlayback } from './audio.ts';
 
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 const HTTP_STATUS_REQUEST_TIMEOUT = 408;
 
+export interface CallStats {
+  sent: number;
+  received: number;
+  connectionState: string;
+}
+
 export interface ActiveCall {
   peer: Peer;
+  stats: CallStats;
   stop: () => void;
 }
 
-function setupAudioReceiver({
+async function setupAudio({
   pc,
-  playback,
+  stats,
 }: {
   pc: RTCPeerConnection;
-  playback: ReturnType<typeof startPlayback>;
-}) {
-  pc.onTrack.subscribe((track) => {
-    track.onReceiveRtp.subscribe((rtp) => {
+  stats: CallStats;
+}): Promise<{ stop: () => void }> {
+  const audioTrack = new MediaStreamTrack({ kind: 'audio' });
+  pc.addTrack(audioTrack);
+
+  const capture = await startCapture();
+  const playback = startPlayback();
+
+  const rtpListener = listenForRtp({
+    port: capture.port,
+    onPacket: (data) => {
+      audioTrack.writeRtp(data);
+      stats.sent++;
+    },
+  });
+
+  pc.onTrack.subscribe((remoteTrack) => {
+    remoteTrack.onReceiveRtp.subscribe((rtp) => {
       playback.write(new Uint8Array(rtp.payload));
+      stats.received++;
     });
   });
-}
 
-function createPeerConnection(): RTCPeerConnection {
-  return new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  return {
+    stop: () => {
+      capture.stop();
+      playback.stop();
+      rtpListener.stop();
+    },
+  };
 }
 
 function setupIceSending({
@@ -66,12 +92,12 @@ export async function startCall({
   myPeerId: string;
   peer: Peer;
 }): Promise<ActiveCall> {
-  const pc = createPeerConnection();
-  const capture = startCapture();
-  const playback = startPlayback();
-
-  pc.addTrack(new MediaStreamTrack({ kind: 'audio' }));
-  setupAudioReceiver({ pc, playback });
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
+  pc.connectionStateChange.subscribe((state) => {
+    stats.connectionState = state;
+  });
+  const audio = await setupAudio({ pc, stats });
   setupIceSending({ pc, api, roomCode, myPeerId, targetPeerId: peer.id });
 
   const offer = await pc.createOffer();
@@ -86,8 +112,7 @@ export async function startCall({
 
   if (error) {
     pc.close();
-    capture.stop();
-    playback.stop();
+    audio.stop();
     throw new Error(
       error.status === HTTP_STATUS_REQUEST_TIMEOUT ? 'Call timed out' : 'Call failed',
     );
@@ -99,10 +124,10 @@ export async function startCall({
 
   return {
     peer,
+    stats,
     stop: () => {
       pc.close();
-      capture.stop();
-      playback.stop();
+      audio.stop();
     },
   };
 }
@@ -120,12 +145,12 @@ export async function answerCall({
   callerPeerId: string;
   offer: unknown;
 }): Promise<ActiveCall> {
-  const pc = createPeerConnection();
-  const capture = startCapture();
-  const playback = startPlayback();
-
-  pc.addTrack(new MediaStreamTrack({ kind: 'audio' }));
-  setupAudioReceiver({ pc, playback });
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
+  pc.connectionStateChange.subscribe((state) => {
+    stats.connectionState = state;
+  });
+  const audio = await setupAudio({ pc, stats });
   setupIceSending({ pc, api, roomCode, myPeerId, targetPeerId: callerPeerId });
 
   // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
@@ -143,10 +168,10 @@ export async function answerCall({
 
   return {
     peer: { id: callerPeerId, name: callerPeerId, joinedAt: '' },
+    stats,
     stop: () => {
       pc.close();
-      capture.stop();
-      playback.stop();
+      audio.stop();
     },
   };
 }

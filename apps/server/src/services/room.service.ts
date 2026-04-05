@@ -20,7 +20,7 @@ interface PeerInfo {
   joined_at: string;
 }
 
-const POLL_TIMEOUT = 30_000;
+const POLL_TIMEOUT_MS = 30_000;
 
 export class RoomService {
   private roomRepo: RoomRepository;
@@ -50,14 +50,6 @@ export class RoomService {
     return peer;
   }
 
-  peers(code: string) {
-    const room = this.roomRepo.findByCode(code);
-    if (!room) {
-      throw new NotFoundError('Room not found');
-    }
-    return this.peerRepo.findByRoomId(room.id);
-  }
-
   pollPeers({
     code,
     excludePeerId,
@@ -79,7 +71,7 @@ export class RoomService {
       const timer = setTimeout(() => {
         this.removePoller({ roomId: room.id, resolver });
         resolve(null);
-      }, POLL_TIMEOUT);
+      }, POLL_TIMEOUT_MS);
 
       const resolver: Resolver<PeerInfo[]> = { resolve, timer, excludePeerId };
 
@@ -87,10 +79,6 @@ export class RoomService {
       pollers.push(resolver);
       this.peerPollers.set(room.id, pollers);
     });
-  }
-
-  leave(peerId: string) {
-    this.peerRepo.delete(peerId);
   }
 
   private notifyPeerChange(roomId: string) {

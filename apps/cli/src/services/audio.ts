@@ -1,10 +1,11 @@
+import { createSocket } from 'node:dgram';
 import type { FileSink } from 'bun';
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 1;
 
 export interface AudioCapture {
-  stream: ReadableStream<Uint8Array>;
+  port: number;
   stop: () => void;
 }
 
@@ -33,7 +34,9 @@ function getSpeakerOutput(): string[] {
   return ['-f', 'dshow', 'default'];
 }
 
-export function startCapture(): AudioCapture {
+export async function startCapture(): Promise<AudioCapture> {
+  const port = 10000 + Math.floor(Math.random() * 50000);
+
   const proc = Bun.spawn(
     [
       'ffmpeg',
@@ -41,22 +44,24 @@ export function startCapture(): AudioCapture {
       '-loglevel',
       'error',
       ...getMicInput(),
-      '-f',
-      's16le',
+      '-acodec',
+      'libopus',
       '-ar',
       String(SAMPLE_RATE),
       '-ac',
       String(CHANNELS),
-      'pipe:1',
+      '-f',
+      'rtp',
+      `rtp://127.0.0.1:${port}`,
     ],
     {
-      stdout: 'pipe',
+      stdout: 'ignore',
       stderr: 'ignore',
     },
   );
 
   return {
-    stream: proc.stdout as ReadableStream<Uint8Array>,
+    port,
     stop: () => proc.kill(),
   };
 }
@@ -69,7 +74,7 @@ export function startPlayback(): AudioPlayback {
       '-loglevel',
       'error',
       '-f',
-      's16le',
+      'opus',
       '-ar',
       String(SAMPLE_RATE),
       '-ac',
@@ -96,6 +101,21 @@ export function startPlayback(): AudioPlayback {
       sink.end();
       proc.kill();
     },
+  };
+}
+
+export function listenForRtp({
+  port,
+  onPacket,
+}: {
+  port: number;
+  onPacket: (data: Buffer) => void;
+}): { stop: () => void } {
+  const socket = createSocket('udp4');
+  socket.on('message', onPacket);
+  socket.bind(port, '127.0.0.1');
+  return {
+    stop: () => socket.close(),
   };
 }
 

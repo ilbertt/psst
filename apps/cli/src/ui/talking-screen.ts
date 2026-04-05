@@ -10,7 +10,19 @@ const WAVE_FRAMES = [
   '  ·   ))         (( ·  ',
 ];
 
-export async function showTalkingScreen(peer: Peer): Promise<void> {
+export interface CallStats {
+  sent: number;
+  received: number;
+  connectionState: string;
+}
+
+export async function showTalkingScreen({
+  peer,
+  stats,
+}: {
+  peer: Peer;
+  stats: CallStats;
+}): Promise<void> {
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,
     screenMode: 'alternate-screen',
@@ -29,7 +41,7 @@ export async function showTalkingScreen(peer: Peer): Promise<void> {
   const waveText = new TextRenderable(renderer, {
     id: 'wave',
     content: WAVE_FRAMES[0],
-    width: 30,
+    width: 40,
     height: 1,
     fg: '#3b82f6',
   });
@@ -37,7 +49,7 @@ export async function showTalkingScreen(peer: Peer): Promise<void> {
   const label = new TextRenderable(renderer, {
     id: 'label',
     content: `TALKING with ${peer.name}`,
-    width: 30,
+    width: 40,
     height: 1,
     fg: '#ffffff',
   });
@@ -45,15 +57,23 @@ export async function showTalkingScreen(peer: Peer): Promise<void> {
   const timerText = new TextRenderable(renderer, {
     id: 'timer',
     content: '00:00',
-    width: 30,
+    width: 40,
     height: 1,
     fg: '#a0a0a0',
+  });
+
+  const statsText = new TextRenderable(renderer, {
+    id: 'stats',
+    content: '',
+    width: 40,
+    height: 1,
+    fg: '#555555',
   });
 
   const hint = new TextRenderable(renderer, {
     id: 'hint',
     content: 'Ctrl+C to hang up',
-    width: 30,
+    width: 40,
     height: 1,
     fg: '#666666',
   });
@@ -61,6 +81,7 @@ export async function showTalkingScreen(peer: Peer): Promise<void> {
   container.add(waveText);
   container.add(label);
   container.add(timerText);
+  container.add(statsText);
   container.add(hint);
   renderer.root.add(container);
 
@@ -78,6 +99,7 @@ export async function showTalkingScreen(peer: Peer): Promise<void> {
     const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
     const secs = String(elapsed % 60).padStart(2, '0');
     timerText.content = `${mins}:${secs}`;
+    statsText.content = `${stats.connectionState} | tx:${stats.sent} rx:${stats.received}`;
     renderer.requestRender();
   }, 1000);
 

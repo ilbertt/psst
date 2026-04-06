@@ -1,7 +1,6 @@
 import { buildCommand } from '@stricli/core';
 import type { AppContext } from '#context.ts';
 import { formatEdenError } from '#services/api-client.ts';
-import { checkFfmpeg } from '#services/audio.ts';
 import { startCall } from '#services/call.ts';
 import { showTalkingScreen } from '#ui/talking-screen.ts';
 
@@ -29,12 +28,6 @@ export const createRoom = buildCommand({
     if (name === 'Anonymous') {
       this.process.stderr.write('Set your name first: psst config set name "Your Name"\n');
       this.process.stderr.write('Or use: psst room --name "Your Name"\n');
-      return;
-    }
-
-    const hasFfmpeg = await checkFfmpeg();
-    if (!hasFfmpeg) {
-      this.process.stderr.write('ffmpeg is required. Install: brew install ffmpeg\n');
       return;
     }
 

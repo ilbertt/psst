@@ -41,16 +41,16 @@ async function setupAudio({
 
   pc.onTrack.subscribe((remoteTrack) => {
     remoteTrack.onReceiveRtp.subscribe((rtp) => {
-      playback.write(new Uint8Array(rtp.payload));
+      playback.write(new Uint8Array(rtp.serialize()));
       stats.received++;
     });
   });
 
   return {
     stop: () => {
+      rtpListener.stop();
       capture.stop();
       playback.stop();
-      rtpListener.stop();
     },
   };
 }

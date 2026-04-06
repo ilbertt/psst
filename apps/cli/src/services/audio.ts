@@ -1,5 +1,4 @@
 import { createSocket } from 'node:dgram';
-import type { FileSink } from 'bun';
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 1;
@@ -67,38 +66,51 @@ export async function startCapture(): Promise<AudioCapture> {
 }
 
 export function startPlayback(): AudioPlayback {
+  const playbackPort = 10000 + Math.floor(Math.random() * 50000);
+
+  const sdp = [
+    'v=0',
+    'o=- 0 0 IN IP4 127.0.0.1',
+    's=psst',
+    `c=IN IP4 127.0.0.1`,
+    't=0 0',
+    `m=audio ${playbackPort} RTP/AVP 111`,
+    'a=rtpmap:111 opus/48000/2',
+  ].join('\r\n');
+
+  const sdpPath = `/tmp/psst-playback-${playbackPort}.sdp`;
+  Bun.write(sdpPath, sdp);
+
   const proc = Bun.spawn(
     [
       'ffmpeg',
       '-hide_banner',
       '-loglevel',
       'error',
-      '-f',
-      'opus',
+      '-protocol_whitelist',
+      'file,udp,rtp',
+      '-i',
+      sdpPath,
       '-ar',
       String(SAMPLE_RATE),
       '-ac',
       String(CHANNELS),
-      '-i',
-      'pipe:0',
       ...getSpeakerOutput(),
     ],
     {
-      stdin: 'pipe',
       stdout: 'ignore',
       stderr: 'ignore',
     },
   );
 
-  const sink = proc.stdin as FileSink;
+  const socket = createSocket('udp4');
 
   return {
     write: (data: Uint8Array) => {
-      sink.write(data);
-      sink.flush();
+      socket.send(data, playbackPort, '127.0.0.1');
     },
     stop: () => {
-      sink.end();
+      socket.close();
       proc.kill();
     },
   };

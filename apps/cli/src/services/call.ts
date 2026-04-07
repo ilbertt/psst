@@ -116,6 +116,8 @@ export async function startCall({
     targetPeerId: peer.id,
   });
 
+  pollIceCandidates({ api, roomCode, myPeerId, pc });
+
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
@@ -135,7 +137,6 @@ export async function startCall({
 
   // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
   await pc.setRemoteDescription(data.answer as any);
-  pollIceCandidates({ api, roomCode, myPeerId, pc });
 
   return { peer, stats, stop };
 }
@@ -160,6 +161,8 @@ export async function answerCall({
     targetPeerId: callerPeerId,
   });
 
+  pollIceCandidates({ api, roomCode, myPeerId, pc });
+
   // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
   await pc.setRemoteDescription(offer as any);
   const answer = await pc.createAnswer();
@@ -170,8 +173,6 @@ export async function answerCall({
     params: { code: roomCode, peerId: callerPeerId },
     body: { answer: pc.localDescription },
   });
-
-  pollIceCandidates({ api, roomCode, myPeerId, pc });
 
   return {
     peer: { id: callerPeerId, name: callerPeerId, joinedAt: '' },

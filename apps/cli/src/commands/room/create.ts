@@ -85,7 +85,7 @@ async function waitForPeer({
   api: AppContext['api'];
   roomCode: string;
   myPeerId: string;
-}): Promise<{ id: string; name: string; joinedAt: string } | null> {
+}): Promise<{ id: string; name: string } | null> {
   while (true) {
     try {
       const { data, error } = await api('/rooms/:code/peers', {

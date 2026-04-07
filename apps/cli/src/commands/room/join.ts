@@ -57,13 +57,19 @@ export const joinRoom = buildCommand({
       return;
     }
 
-    this.process.stdout.write('  Incoming call! Connecting...\n');
+    const { data: peers } = await this.api('/rooms/:code/peers', {
+      params: { code },
+      headers: { 'psst-peer-id': joined.peerId },
+    });
+    const callerName = peers?.find((p) => p.id === incoming.from)?.name ?? incoming.from;
+
+    this.process.stdout.write(`  ${callerName} is calling! Connecting...\n`);
 
     const call = await answerCall({
       api: this.api,
       roomCode: code,
       myPeerId: joined.peerId,
-      callerPeerId: incoming.from,
+      peer: { id: incoming.from, name: callerName },
       offer: incoming.offer,
     });
 

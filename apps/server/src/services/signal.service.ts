@@ -7,7 +7,7 @@ interface Resolver<T> {
 
 class Exchange<T> {
   private pollers = new Map<string, Resolver<T>>();
-  private pending = new Map<string, T>();
+  private pending = new Map<string, T[]>();
 
   send({ targetId, value }: { targetId: string; value: T }): boolean {
     const poller = this.pollers.get(targetId);
@@ -18,14 +18,22 @@ class Exchange<T> {
       return true;
     }
 
-    this.pending.set(targetId, value);
+    const queue = this.pending.get(targetId);
+    if (queue) {
+      queue.push(value);
+    } else {
+      this.pending.set(targetId, [value]);
+    }
     return true;
   }
 
   poll(peerId: string): Promise<T | null> {
-    const value = this.pending.get(peerId);
-    if (value) {
-      this.pending.delete(peerId);
+    const queue = this.pending.get(peerId);
+    if (queue && queue.length > 0) {
+      const value = queue.shift()!;
+      if (queue.length === 0) {
+        this.pending.delete(peerId);
+      }
       return Promise.resolve(value);
     }
 

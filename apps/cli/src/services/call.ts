@@ -145,20 +145,20 @@ export async function answerCall({
   api,
   roomCode,
   myPeerId,
-  callerPeerId,
+  peer,
   offer,
 }: {
   api: AppContext['api'];
   roomCode: string;
   myPeerId: string;
-  callerPeerId: string;
+  peer: Peer;
   offer: unknown;
 }): Promise<ActiveCall> {
   const { pc, stats, stop } = await createPeerConnection({
     api,
     roomCode,
     myPeerId,
-    targetPeerId: callerPeerId,
+    targetPeerId: peer.id,
   });
 
   pollIceCandidates({ api, roomCode, myPeerId, pc });
@@ -170,15 +170,11 @@ export async function answerCall({
 
   await api('/rooms/:code/calls/answer/:peerId', {
     method: 'POST',
-    params: { code: roomCode, peerId: callerPeerId },
+    params: { code: roomCode, peerId: peer.id },
     body: { answer: pc.localDescription },
   });
 
-  return {
-    peer: { id: callerPeerId, name: callerPeerId, joinedAt: '' },
-    stats,
-    stop,
-  };
+  return { peer, stats, stop };
 }
 
 async function pollIceCandidates({

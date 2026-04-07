@@ -7,6 +7,7 @@ import { RoomRepository } from '#repositories/room.repository.ts';
 import { HealthService } from '#services/health.service.ts';
 import { RoomService } from '#services/room.service.ts';
 import { SignalService } from '#services/signal.service.ts';
+import { TurnService } from '#services/turn.service.ts';
 
 const healthRepo = new HealthRepository(db);
 const roomRepo = new RoomRepository(db);
@@ -15,6 +16,7 @@ const peerRepo = new PeerRepository(db);
 const healthService = new HealthService(healthRepo);
 const roomService = new RoomService({ roomRepo, peerRepo });
 const signalService = new SignalService();
+const turnService = new TurnService();
 
 export const LoggerPlugin = new Elysia({ name: 'logger' })
   .decorate('logger', logger)
@@ -35,4 +37,9 @@ export const RoomServicePlugin = new Elysia({ name: 'service.room' }).decorate(
 export const SignalServicePlugin = new Elysia({ name: 'service.signal' }).decorate(
   'signalService',
   signalService,
+);
+
+export const TurnServicePlugin = new Elysia({ name: 'service.turn' }).decorate(
+  'turnService',
+  turnService,
 );

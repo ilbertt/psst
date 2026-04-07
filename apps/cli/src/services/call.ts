@@ -3,8 +3,23 @@ import type { AppContext } from '#context.ts';
 import type { Peer } from '#types.ts';
 import { listenForRtp, startCapture, startPlayback } from './audio.ts';
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 const HTTP_STATUS_REQUEST_TIMEOUT = 408;
+
+type RTCIceServer = { urls: string; username?: string; credential?: string };
+
+async function fetchIceServers(api: AppContext['api']): Promise<RTCIceServer[]> {
+  const { data, error } = await api('/turn/credentials', {});
+  if (error) {
+    throw new Error('Failed to fetch ICE servers from psst server');
+  }
+  return data.flatMap((server) =>
+    server.urls.map((url) => ({
+      urls: url,
+      username: server.username,
+      credential: server.credential,
+    })),
+  );
+}
 
 export interface CallStats {
   sent: number;
@@ -92,7 +107,8 @@ export async function startCall({
   myPeerId: string;
   peer: Peer;
 }): Promise<ActiveCall> {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const iceServers = await fetchIceServers(api);
+  const pc = new RTCPeerConnection({ iceServers });
   const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
   pc.connectionStateChange.subscribe((state) => {
     stats.connectionState = state;
@@ -145,7 +161,8 @@ export async function answerCall({
   callerPeerId: string;
   offer: unknown;
 }): Promise<ActiveCall> {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const iceServers = await fetchIceServers(api);
+  const pc = new RTCPeerConnection({ iceServers });
   const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
   pc.connectionStateChange.subscribe((state) => {
     stats.connectionState = state;

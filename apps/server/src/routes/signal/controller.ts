@@ -10,7 +10,7 @@ import {
   icePollResponse,
 } from './model.ts';
 
-export const signalRoutes = new Elysia({ prefix: '/rooms/:code' })
+export const signalController = new Elysia({ prefix: '/rooms/:code' })
   .use(SignalServicePlugin)
 
   .post(

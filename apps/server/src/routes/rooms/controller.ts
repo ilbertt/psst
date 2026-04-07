@@ -9,7 +9,7 @@ import {
   roomResponse,
 } from './model.ts';
 
-export const roomRoutes = new Elysia({ prefix: '/rooms' })
+export const roomController = new Elysia({ prefix: '/rooms' })
   .use(RoomServicePlugin)
   .use(LoggerPlugin)
 

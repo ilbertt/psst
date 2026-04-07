@@ -2,7 +2,7 @@ import { Elysia, StatusMap } from 'elysia';
 import { TurnServicePlugin } from '#services/plugins.ts';
 import { iceServersResponse } from './model.ts';
 
-export const turnRoutes = new Elysia({ prefix: '/turn' })
+export const turnController = new Elysia({ prefix: '/turn' })
   .use(TurnServicePlugin)
 
   .get(

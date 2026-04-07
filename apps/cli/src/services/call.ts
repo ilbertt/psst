@@ -46,7 +46,7 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   stop: () => void;
 }> {
   const iceServers = await fetchIceServers(ctx.api);
-  const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: 'relay' });
+  const pc = new RTCPeerConnection({ iceServers });
   const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
 
   pc.connectionStateChange.subscribe((state) => {

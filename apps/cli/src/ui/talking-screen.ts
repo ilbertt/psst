@@ -1,14 +1,26 @@
 import { BoxRenderable, createCliRenderer, TextRenderable } from '@opentui/core';
 import type { Peer } from '#types.ts';
 
-const WAVE_FRAMES = [
-  '  ·  )))        ((( ·  ',
-  '  · ))))       (((( ·  ',
-  '  ·  )))        ((( ·  ',
-  '  ·   ))         (( ·  ',
-  '  ·    )          ( ·  ',
-  '  ·   ))         (( ·  ',
-];
+const BAR_CHARS = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+const BAR_COUNT = 16;
+
+const BAR_FRAMES = buildBarFrames({ count: 24, bars: BAR_COUNT });
+
+function buildBarFrames({ count, bars }: { count: number; bars: number }): string[] {
+  const heights = Array.from({ length: bars }, () => Math.random());
+  const frames: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = (i / count) * Math.PI * 2;
+    // biome-ignore lint/complexity/useMaxParams: Array.map callback requires index
+    const cols = heights.map((h, idx) => {
+      const phase = (idx / bars) * Math.PI * 2;
+      const level = 0.3 + 0.7 * h * ((1 + Math.sin(t + phase)) / 2);
+      return BAR_CHARS[Math.round(level * (BAR_CHARS.length - 1))]!;
+    });
+    frames.push(`    ${cols.join(' ')}    `);
+  }
+  return frames;
+}
 
 export interface CallStats {
   sent: number;
@@ -40,7 +52,7 @@ export async function showTalkingScreen({
 
   const waveText = new TextRenderable(renderer, {
     id: 'wave',
-    content: WAVE_FRAMES[0],
+    content: BAR_FRAMES[0],
     width: 40,
     height: 1,
     fg: '#3b82f6',
@@ -89,8 +101,8 @@ export async function showTalkingScreen({
   const startTime = Date.now();
 
   const animInterval = setInterval(() => {
-    frameIndex = (frameIndex + 1) % WAVE_FRAMES.length;
-    waveText.content = WAVE_FRAMES[frameIndex]!;
+    frameIndex = (frameIndex + 1) % BAR_FRAMES.length;
+    waveText.content = BAR_FRAMES[frameIndex]!;
     renderer.requestRender();
   }, 200);
 

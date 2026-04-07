@@ -33,13 +33,26 @@ export interface ActiveCall {
   stop: () => void;
 }
 
-async function setupAudio({
-  pc,
-  stats,
-}: {
+interface PeerConnectionContext {
+  api: AppContext['api'];
+  roomCode: string;
+  myPeerId: string;
+  targetPeerId: string;
+}
+
+async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   pc: RTCPeerConnection;
   stats: CallStats;
-}): Promise<{ stop: () => void }> {
+  stop: () => void;
+}> {
+  const iceServers = await fetchIceServers(ctx.api);
+  const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: 'relay' });
+  const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
+
+  pc.connectionStateChange.subscribe((state) => {
+    stats.connectionState = state;
+  });
+
   const audioTrack = new MediaStreamTrack({ kind: 'audio' });
   pc.addTrack(audioTrack);
 
@@ -61,39 +74,28 @@ async function setupAudio({
     });
   });
 
+  pc.onIceCandidate.subscribe((candidate) => {
+    if (!candidate) {
+      return;
+    }
+    ctx.api('/rooms/:code/ice/:peerId', {
+      method: 'POST',
+      params: { code: ctx.roomCode, peerId: ctx.targetPeerId },
+      headers: { 'psst-peer-id': ctx.myPeerId },
+      body: { candidate: candidate.toJSON() },
+    });
+  });
+
   return {
+    pc,
+    stats,
     stop: () => {
+      pc.close();
       rtpListener.stop();
       capture.stop();
       playback.stop();
     },
   };
-}
-
-function setupIceSending({
-  pc,
-  api,
-  roomCode,
-  myPeerId,
-  targetPeerId,
-}: {
-  pc: RTCPeerConnection;
-  api: AppContext['api'];
-  roomCode: string;
-  myPeerId: string;
-  targetPeerId: string;
-}) {
-  pc.onIceCandidate.subscribe((candidate) => {
-    if (!candidate) {
-      return;
-    }
-    api('/rooms/:code/ice/:peerId', {
-      method: 'POST',
-      params: { code: roomCode, peerId: targetPeerId },
-      headers: { 'psst-peer-id': myPeerId },
-      body: { candidate: candidate.toJSON() },
-    });
-  });
 }
 
 export async function startCall({
@@ -107,14 +109,12 @@ export async function startCall({
   myPeerId: string;
   peer: Peer;
 }): Promise<ActiveCall> {
-  const iceServers = await fetchIceServers(api);
-  const pc = new RTCPeerConnection({ iceServers });
-  const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
-  pc.connectionStateChange.subscribe((state) => {
-    stats.connectionState = state;
+  const { pc, stats, stop } = await createPeerConnection({
+    api,
+    roomCode,
+    myPeerId,
+    targetPeerId: peer.id,
   });
-  const audio = await setupAudio({ pc, stats });
-  setupIceSending({ pc, api, roomCode, myPeerId, targetPeerId: peer.id });
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -127,8 +127,7 @@ export async function startCall({
   });
 
   if (error) {
-    pc.close();
-    audio.stop();
+    stop();
     throw new Error(
       error.status === HTTP_STATUS_REQUEST_TIMEOUT ? 'Call timed out' : 'Call failed',
     );
@@ -138,14 +137,7 @@ export async function startCall({
   await pc.setRemoteDescription(data.answer as any);
   pollIceCandidates({ api, roomCode, myPeerId, pc });
 
-  return {
-    peer,
-    stats,
-    stop: () => {
-      pc.close();
-      audio.stop();
-    },
-  };
+  return { peer, stats, stop };
 }
 
 export async function answerCall({
@@ -161,14 +153,12 @@ export async function answerCall({
   callerPeerId: string;
   offer: unknown;
 }): Promise<ActiveCall> {
-  const iceServers = await fetchIceServers(api);
-  const pc = new RTCPeerConnection({ iceServers });
-  const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
-  pc.connectionStateChange.subscribe((state) => {
-    stats.connectionState = state;
+  const { pc, stats, stop } = await createPeerConnection({
+    api,
+    roomCode,
+    myPeerId,
+    targetPeerId: callerPeerId,
   });
-  const audio = await setupAudio({ pc, stats });
-  setupIceSending({ pc, api, roomCode, myPeerId, targetPeerId: callerPeerId });
 
   // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
   await pc.setRemoteDescription(offer as any);
@@ -186,10 +176,7 @@ export async function answerCall({
   return {
     peer: { id: callerPeerId, name: callerPeerId, joinedAt: '' },
     stats,
-    stop: () => {
-      pc.close();
-      audio.stop();
-    },
+    stop,
   };
 }
 

@@ -57,7 +57,7 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   pc.addTrack(audioTrack);
 
   const capture = await startCapture();
-  const playback = startPlayback();
+  const playback = await startPlayback();
 
   const rtpListener = listenForRtp({
     port: capture.port,

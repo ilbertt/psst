@@ -7,11 +7,7 @@ interface IceServer {
 }
 
 interface CloudflareResponse {
-  iceServers: {
-    urls: string[];
-    username?: string;
-    credential?: string;
-  };
+  iceServers: IceServer[];
 }
 
 const CREDENTIAL_TTL = 86400;
@@ -43,6 +39,6 @@ export class TurnService {
     }
 
     const data = (await resp.json()) as CloudflareResponse;
-    return [data.iceServers];
+    return data.iceServers;
   }
 }

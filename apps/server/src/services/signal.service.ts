@@ -1,6 +1,52 @@
+const POLL_TIMEOUT = 30_000;
+
 interface Resolver<T> {
   resolve: (value: T) => void;
   timer: Timer;
+}
+
+class Exchange<T> {
+  private pollers = new Map<string, Resolver<T>>();
+  private pending = new Map<string, T>();
+
+  send({ targetId, value }: { targetId: string; value: T }): boolean {
+    const poller = this.pollers.get(targetId);
+    if (poller) {
+      clearTimeout(poller.timer);
+      this.pollers.delete(targetId);
+      poller.resolve(value);
+      return true;
+    }
+
+    this.pending.set(targetId, value);
+    return true;
+  }
+
+  poll(peerId: string): Promise<T | null> {
+    const value = this.pending.get(peerId);
+    if (value) {
+      this.pending.delete(peerId);
+      return Promise.resolve(value);
+    }
+
+    return new Promise<T | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pollers.delete(peerId);
+        resolve(null);
+      }, POLL_TIMEOUT);
+
+      this.pollers.set(peerId, { resolve, timer });
+    });
+  }
+
+  cleanup(peerId: string) {
+    const poller = this.pollers.get(peerId);
+    if (poller) {
+      clearTimeout(poller.timer);
+      this.pollers.delete(peerId);
+    }
+    this.pending.delete(peerId);
+  }
 }
 
 interface CallOffer {
@@ -17,18 +63,10 @@ interface IceCandidate {
   candidate: unknown;
 }
 
-interface PendingCall {
-  callerId: string;
-  offer: unknown;
-}
-
-const POLL_TIMEOUT = 30_000;
-
 export class SignalService {
-  private callers = new Map<string, Resolver<CallAnswer>>();
-  private pendingCalls = new Map<string, PendingCall>();
-  private listeners = new Map<string, Resolver<CallOffer>>();
-  private icePollers = new Map<string, Resolver<IceCandidate>>();
+  private calls = new Exchange<CallOffer>();
+  private answers = new Exchange<CallAnswer>();
+  private ice = new Exchange<IceCandidate>();
 
   call({
     callerId,
@@ -39,53 +77,16 @@ export class SignalService {
     targetPeerId: string;
     offer: unknown;
   }): Promise<CallAnswer | null> {
-    const listener = this.listeners.get(targetPeerId);
-    if (listener) {
-      clearTimeout(listener.timer);
-      this.listeners.delete(targetPeerId);
-      listener.resolve({ from: callerId, offer });
-    } else {
-      this.pendingCalls.set(targetPeerId, { callerId, offer });
-    }
-
-    return new Promise<CallAnswer | null>((resolve) => {
-      const timer = setTimeout(() => {
-        this.callers.delete(callerId);
-        this.pendingCalls.delete(targetPeerId);
-        resolve(null);
-      }, POLL_TIMEOUT);
-
-      this.callers.set(callerId, { resolve, timer });
-    });
+    this.calls.send({ targetId: targetPeerId, value: { from: callerId, offer } });
+    return this.answers.poll(callerId);
   }
 
   pollCalls(peerId: string): Promise<CallOffer | null> {
-    const pending = this.pendingCalls.get(peerId);
-    if (pending) {
-      this.pendingCalls.delete(peerId);
-      return Promise.resolve({ from: pending.callerId, offer: pending.offer });
-    }
-
-    return new Promise<CallOffer | null>((resolve) => {
-      const timer = setTimeout(() => {
-        this.listeners.delete(peerId);
-        resolve(null);
-      }, POLL_TIMEOUT);
-
-      this.listeners.set(peerId, { resolve, timer });
-    });
+    return this.calls.poll(peerId);
   }
 
   answer({ callerPeerId, answer }: { callerPeerId: string; answer: unknown }): boolean {
-    const caller = this.callers.get(callerPeerId);
-    if (!caller) {
-      return false;
-    }
-
-    clearTimeout(caller.timer);
-    this.callers.delete(callerPeerId);
-    caller.resolve({ answer });
-    return true;
+    return this.answers.send({ targetId: callerPeerId, value: { answer } });
   }
 
   sendIce({
@@ -97,36 +98,16 @@ export class SignalService {
     targetPeerId: string;
     candidate: unknown;
   }): boolean {
-    const poller = this.icePollers.get(targetPeerId);
-    if (!poller) {
-      return false;
-    }
-
-    clearTimeout(poller.timer);
-    this.icePollers.delete(targetPeerId);
-    poller.resolve({ from: fromPeerId, candidate });
-    return true;
+    return this.ice.send({ targetId: targetPeerId, value: { from: fromPeerId, candidate } });
   }
 
   pollIce(peerId: string): Promise<IceCandidate | null> {
-    return new Promise<IceCandidate | null>((resolve) => {
-      const timer = setTimeout(() => {
-        this.icePollers.delete(peerId);
-        resolve(null);
-      }, POLL_TIMEOUT);
-
-      this.icePollers.set(peerId, { resolve, timer });
-    });
+    return this.ice.poll(peerId);
   }
 
   cleanup(peerId: string) {
-    for (const map of [this.callers, this.listeners, this.icePollers]) {
-      const entry = map.get(peerId);
-      if (entry) {
-        clearTimeout(entry.timer);
-        map.delete(peerId);
-      }
-    }
-    this.pendingCalls.delete(peerId);
+    this.calls.cleanup(peerId);
+    this.answers.cleanup(peerId);
+    this.ice.cleanup(peerId);
   }
 }

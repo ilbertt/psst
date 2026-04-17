@@ -1,31 +1,108 @@
-import { BoxRenderable, createCliRenderer, TextRenderable } from '@opentui/core';
+import {
+  ASCIIFontRenderable,
+  BoxRenderable,
+  type CliRenderer,
+  createCliRenderer,
+  TextRenderable,
+} from '@opentui/core';
+import type { CallStats } from '#services/call.ts';
 import type { Peer } from '#types.ts';
 
-const BAR_CHARS = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-const BAR_COUNT = 16;
+const COLORS = {
+  bg: '#0f0f1a',
+  speaking: '#fbbf24',
+  idle: '#4b5563',
+  label: '#e5e7eb',
+  dim: '#6b7280',
+  hint: '#374151',
+};
 
-const BAR_FRAMES = buildBarFrames({ count: 24, bars: BAR_COUNT });
+const SPEAKING_THRESHOLD = 0.12;
+const ANIMATION_INTERVAL_MS = 60;
+const TIMER_INTERVAL_MS = 1000;
 
-function buildBarFrames({ count, bars }: { count: number; bars: number }): string[] {
-  const heights = Array.from({ length: bars }, () => Math.random());
-  const frames: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = (i / count) * Math.PI * 2;
-    // biome-ignore lint/complexity/useMaxParams: Array.map callback requires index
-    const cols = heights.map((h, idx) => {
-      const phase = (idx / bars) * Math.PI * 2;
-      const level = 0.3 + 0.7 * h * ((1 + Math.sin(t + phase)) / 2);
-      return BAR_CHARS[Math.round(level * (BAR_CHARS.length - 1))]!;
-    });
-    frames.push(`    ${cols.join(' ')}    `);
+const FACE_HAIR = '  ___  ';
+const FACE_BROW = ' /   \\ ';
+const FACE_EYES = '( o o )';
+const FACE_CHIN = '  ───  ';
+
+const MOUTHS = [' \\ ─ / ', ' \\ o / ', ' \\ O / '];
+
+function levelToMouth(level: number): string {
+  if (level < 0.12) {
+    return MOUTHS[0]!;
   }
-  return frames;
+  if (level < 0.35) {
+    return MOUTHS[1]!;
+  }
+  return MOUTHS[2]!;
 }
 
-export interface CallStats {
-  sent: number;
-  received: number;
-  connectionState: string;
+interface FaceHandles {
+  setLevel: (level: number) => void;
+}
+
+// biome-ignore lint/complexity/useMaxParams: builder takes renderer + face options
+function buildFace(
+  renderer: CliRenderer,
+  { name, idPrefix }: { name: string; idPrefix: string },
+): { box: BoxRenderable; handles: FaceHandles } {
+  const box = new BoxRenderable(renderer, {
+    id: `${idPrefix}-face`,
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginX: 4,
+  });
+
+  const faceLines = [FACE_HAIR, FACE_BROW, FACE_EYES, MOUTHS[0]!, FACE_CHIN];
+  const lines: TextRenderable[] = [];
+  let lineIdx = 0;
+  for (const content of faceLines) {
+    const line = new TextRenderable(renderer, {
+      id: `${idPrefix}-line-${lineIdx}`,
+      content,
+      fg: COLORS.idle,
+      width: 7,
+      height: 1,
+    });
+    lines.push(line);
+    box.add(line);
+    lineIdx++;
+  }
+
+  box.add(
+    new TextRenderable(renderer, {
+      id: `${idPrefix}-name`,
+      content: name,
+      fg: COLORS.label,
+      marginTop: 1,
+    }),
+  );
+
+  const mouthLine = lines[3]!;
+  let lastColor = COLORS.idle;
+  let lastMouth = MOUTHS[0]!;
+
+  return {
+    box,
+    handles: {
+      setLevel(level: number) {
+        const speaking = level >= SPEAKING_THRESHOLD;
+        const color = speaking ? COLORS.speaking : COLORS.idle;
+        const mouth = levelToMouth(level);
+        if (color !== lastColor) {
+          for (const line of lines) {
+            line.fg = color;
+          }
+          lastColor = color;
+        }
+        if (mouth !== lastMouth) {
+          mouthLine.content = mouth;
+          lastMouth = mouth;
+        }
+      },
+    },
+  };
 }
 
 export async function showTalkingScreen({
@@ -39,81 +116,83 @@ export async function showTalkingScreen({
     exitOnCtrlC: false,
     screenMode: 'alternate-screen',
   });
+  renderer.setBackgroundColor(COLORS.bg);
 
-  const container = new BoxRenderable(renderer, {
-    id: 'container',
+  const page = new BoxRenderable(renderer, {
+    id: 'page',
     width: '100%',
     height: '100%',
-    backgroundColor: '#1a1a2e',
+    flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    flexDirection: 'column',
   });
+  renderer.root.add(page);
 
-  const waveText = new TextRenderable(renderer, {
-    id: 'wave',
-    content: BAR_FRAMES[0],
-    width: 40,
-    height: 1,
-    fg: '#3b82f6',
-  });
+  page.add(
+    new ASCIIFontRenderable(renderer, {
+      id: 'title',
+      text: 'psst',
+      font: 'tiny',
+      color: '#7dd3fc',
+      selectable: false,
+      marginBottom: 2,
+    }),
+  );
 
-  const label = new TextRenderable(renderer, {
-    id: 'label',
-    content: `TALKING with ${peer.name}`,
-    width: 40,
-    height: 1,
-    fg: '#ffffff',
+  const facesRow = new BoxRenderable(renderer, {
+    id: 'faces',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   });
+  page.add(facesRow);
+
+  const me = buildFace(renderer, { name: 'You', idPrefix: 'me' });
+  const them = buildFace(renderer, { name: peer.name, idPrefix: 'them' });
+  facesRow.add(me.box);
+  facesRow.add(them.box);
 
   const timerText = new TextRenderable(renderer, {
     id: 'timer',
     content: '00:00',
-    width: 40,
-    height: 1,
-    fg: '#a0a0a0',
+    fg: COLORS.dim,
+    marginTop: 2,
   });
+  page.add(timerText);
 
-  const statsText = new TextRenderable(renderer, {
-    id: 'stats',
-    content: '',
-    width: 40,
-    height: 1,
-    fg: '#555555',
+  const statusText = new TextRenderable(renderer, {
+    id: 'status',
+    content: 'connecting...',
+    fg: COLORS.hint,
+    marginTop: 1,
   });
+  page.add(statusText);
 
-  const hint = new TextRenderable(renderer, {
-    id: 'hint',
-    content: 'Ctrl+C to hang up',
-    width: 40,
-    height: 1,
-    fg: '#666666',
-  });
+  page.add(
+    new TextRenderable(renderer, {
+      id: 'hint',
+      content: 'Ctrl+C to hang up',
+      fg: COLORS.hint,
+      marginTop: 2,
+    }),
+  );
 
-  container.add(waveText);
-  container.add(label);
-  container.add(timerText);
-  container.add(statsText);
-  container.add(hint);
-  renderer.root.add(container);
-
-  let frameIndex = 0;
   const startTime = Date.now();
 
   const animInterval = setInterval(() => {
-    frameIndex = (frameIndex + 1) % BAR_FRAMES.length;
-    waveText.content = BAR_FRAMES[frameIndex]!;
+    me.handles.setLevel(stats.localLevel);
+    them.handles.setLevel(stats.remoteLevel);
     renderer.requestRender();
-  }, 200);
+  }, ANIMATION_INTERVAL_MS);
 
   const timerInterval = setInterval(() => {
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
     const secs = String(elapsed % 60).padStart(2, '0');
     timerText.content = `${mins}:${secs}`;
-    statsText.content = `${stats.connectionState} | tx:${stats.sent} rx:${stats.received}`;
+    statusText.content = stats.connectionState;
     renderer.requestRender();
-  }, 1000);
+  }, TIMER_INTERVAL_MS);
 
   renderer.start();
 

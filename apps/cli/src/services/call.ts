@@ -25,6 +25,8 @@ export interface CallStats {
   sent: number;
   received: number;
   connectionState: string;
+  localLevel: number;
+  remoteLevel: number;
 }
 
 export interface ActiveCall {
@@ -40,6 +42,16 @@ interface PeerConnectionContext {
   targetPeerId: string;
 }
 
+const RTP_HEADER_BYTES = 12;
+const VAD_SILENCE_FLOOR = 10;
+const VAD_SPEECH_CEIL = 80;
+const VAD_SMOOTHING = 0.6;
+
+function payloadToLevel(payloadSize: number): number {
+  const range = VAD_SPEECH_CEIL - VAD_SILENCE_FLOOR;
+  return Math.max(0, Math.min(1, (payloadSize - VAD_SILENCE_FLOOR) / range));
+}
+
 async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   pc: RTCPeerConnection;
   stats: CallStats;
@@ -47,7 +59,13 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
 }> {
   const iceServers = await fetchIceServers(ctx.api);
   const pc = new RTCPeerConnection({ iceServers });
-  const stats: CallStats = { sent: 0, received: 0, connectionState: 'new' };
+  const stats: CallStats = {
+    sent: 0,
+    received: 0,
+    connectionState: 'new',
+    localLevel: 0,
+    remoteLevel: 0,
+  };
 
   pc.connectionStateChange.subscribe((state) => {
     stats.connectionState = state;
@@ -64,6 +82,9 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
     onPacket: (data) => {
       audioTrack.writeRtp(data);
       stats.sent++;
+      const payloadSize = Math.max(0, data.length - RTP_HEADER_BYTES);
+      stats.localLevel =
+        stats.localLevel * VAD_SMOOTHING + payloadToLevel(payloadSize) * (1 - VAD_SMOOTHING);
     },
   });
 
@@ -71,6 +92,9 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
     remoteTrack.onReceiveRtp.subscribe((rtp) => {
       playback.write(new Uint8Array(rtp.serialize()));
       stats.received++;
+      stats.remoteLevel =
+        stats.remoteLevel * VAD_SMOOTHING +
+        payloadToLevel(rtp.payload.length) * (1 - VAD_SMOOTHING);
     });
   });
 

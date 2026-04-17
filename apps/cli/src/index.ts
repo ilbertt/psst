@@ -1,20 +1,8 @@
 import { buildApplication, buildRouteMap, run } from '@stricli/core';
+import { rootCommand } from '#commands/_root.ts';
 import { configSet } from '#commands/config/set.ts';
 import { configShow } from '#commands/config/show.ts';
-import { createRoom } from '#commands/room/create.ts';
-import { joinRoom } from '#commands/room/join.ts';
 import { createContext } from '#context.ts';
-
-const roomRoutes = buildRouteMap({
-  routes: {
-    create: createRoom,
-    join: joinRoom,
-  },
-  defaultCommand: 'create',
-  docs: {
-    brief: 'Create or join a room',
-  },
-});
 
 const configRoutes = buildRouteMap({
   routes: {
@@ -29,11 +17,13 @@ const configRoutes = buildRouteMap({
 
 const root = buildRouteMap({
   routes: {
-    room: roomRoutes,
+    _root: rootCommand,
     config: configRoutes,
   },
+  defaultCommand: '_root',
   docs: {
     brief: 'psst — tap someone on the shoulder',
+    hideRoute: { _root: true },
   },
 });
 

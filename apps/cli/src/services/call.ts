@@ -6,6 +6,8 @@ import { listenForRtp, startCapture, startPlayback } from './audio.ts';
 
 const HTTP_STATUS_REQUEST_TIMEOUT = 408;
 const OPUS_PAYLOAD_TYPE = 111;
+const OPUS_SSRC = 0x10000000 + Math.floor(Math.random() * 0x7fffffff);
+const RTP_SSRC_OFFSET = 8;
 const CALL_LOG_PATH = `/tmp/psst-call-${process.pid}.log`;
 
 function logCall({ event, detail }: { event: string; detail?: unknown }): void {
@@ -131,6 +133,7 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   const audio = new Audio('audio', 'SendRecv');
   audio.addOpusCodec(OPUS_PAYLOAD_TYPE);
   audio.setBitrate(64_000);
+  audio.addSSRC(OPUS_SSRC, 'psst-audio');
   const localTrack = pc.addTrack(audio);
 
   const capture = await startCapture();
@@ -144,6 +147,13 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
       if (stopping) {
         return;
       }
+      if (data.length < RTP_HEADER_BYTES) {
+        return;
+      }
+      // libdatachannel requires the RTP packet's SSRC field to match the
+      // SSRC declared in SDP (see libdatachannel media-sender example).
+      // ffmpeg picks a random SSRC; rewrite it to the declared one.
+      data.writeUInt32BE(OPUS_SSRC, RTP_SSRC_OFFSET);
       if (localTrack.isOpen()) {
         try {
           localTrack.sendMessageBinary(data);
@@ -152,7 +162,7 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
         }
       }
       stats.sent++;
-      const payloadSize = Math.max(0, data.length - RTP_HEADER_BYTES);
+      const payloadSize = data.length - RTP_HEADER_BYTES;
       stats.localLevel =
         stats.localLevel * VAD_SMOOTHING + payloadToLevel(payloadSize) * (1 - VAD_SMOOTHING);
     },

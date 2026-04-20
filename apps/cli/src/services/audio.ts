@@ -156,8 +156,8 @@ export async function startPlayback(): Promise<AudioPlayback> {
     's16le',
     '-ar',
     '48000',
-    '-ac',
-    '2',
+    '-ch_layout',
+    'stereo',
     '-i',
     'pipe:0',
   ].join(' ');

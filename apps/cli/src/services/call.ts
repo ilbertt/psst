@@ -136,11 +136,20 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   const capture = await startCapture();
   const playback = await startPlayback();
 
+  let stopping = false;
+
   const rtpListener = listenForRtp({
     port: capture.port,
     onPacket: (data) => {
+      if (stopping) {
+        return;
+      }
       if (localTrack.isOpen()) {
-        localTrack.sendMessageBinary(data);
+        try {
+          localTrack.sendMessageBinary(data);
+        } catch {
+          // track closed between isOpen() check and send — drop packet
+        }
       }
       stats.sent++;
       const payloadSize = Math.max(0, data.length - RTP_HEADER_BYTES);
@@ -151,6 +160,9 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
 
   const attachRemote = (track: Track) => {
     track.onMessage((data) => {
+      if (stopping) {
+        return;
+      }
       playback.write(new Uint8Array(data));
       stats.received++;
       const payloadSize = Math.max(0, data.length - RTP_HEADER_BYTES);
@@ -183,14 +195,21 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
     pc,
     stats,
     stop: () => {
+      if (stopping) {
+        return;
+      }
+      stopping = true;
+      // Order matters: stop the sources of native calls BEFORE destroying
+      // the PeerConnection, or libdatachannel throws a C++ exception on
+      // sendMessageBinary/playback.write against freed native memory.
+      rtpListener.stop();
+      capture.stop();
+      playback.stop();
       try {
         pc.close();
       } catch {
         // already closed
       }
-      rtpListener.stop();
-      capture.stop();
-      playback.stop();
     },
   };
 }

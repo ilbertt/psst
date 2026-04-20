@@ -6,9 +6,19 @@ const BUILD_SCRIPTS_DIR = import.meta.dir;
 const APP_DIR = join(BUILD_SCRIPTS_DIR, '..');
 const DIST_DIR = join(APP_DIR, 'dist');
 const CLI_OUT = join(DIST_DIR, 'psst');
+const MC_HELPER_DIR = join(APP_DIR, 'src/services/mc-helper');
+const MC_HELPER_SRC = join(MC_HELPER_DIR, 'psst-mc.swift');
+const MC_HELPER_BIN = join(MC_HELPER_DIR, 'psst-mc');
 
 console.log('🧹 Cleaning dist...');
 await rm(DIST_DIR, { recursive: true, force: true });
+
+console.log('🍎 Compiling MC helper (swiftc)...');
+const swift = Bun.spawnSync(['swiftc', '-O', '-o', MC_HELPER_BIN, MC_HELPER_SRC]);
+if (swift.exitCode !== 0) {
+  console.error('❌ swiftc failed:', swift.stderr.toString());
+  process.exit(1);
+}
 
 console.log('🔨 Compiling binary...');
 const buildResult = await Bun.build({

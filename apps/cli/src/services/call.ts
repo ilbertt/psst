@@ -1,38 +1,13 @@
-import { appendFileSync } from 'node:fs';
-import {
-  Audio,
-  type IceServer,
-  initLogger,
-  PeerConnection,
-  RtcpReceivingSession,
-  type Track,
-} from 'node-datachannel';
+import { appendFileSync, openSync } from 'node:fs';
 import type { AppContext } from '#context.ts';
 import type { Peer } from '#types.ts';
 import { listenForRtp, startCapture, startPlayback } from './audio.ts';
+import helperPath from './mc-helper';
 
-const HTTP_STATUS_REQUEST_TIMEOUT = 408;
-const OPUS_PAYLOAD_TYPE = 111;
-const OPUS_SSRC = 0x10000000 + Math.floor(Math.random() * 0x7fffffff);
-const RTP_SSRC_OFFSET = 8;
 const CALL_LOG_PATH = `/tmp/psst-call-${process.pid}.log`;
-const NDC_LOG_PATH = `/tmp/psst-ndc-${process.pid}.log`;
-
-let loggerInitialized = false;
-function initNdcLogger(): void {
-  if (loggerInitialized) {
-    return;
-  }
-  loggerInitialized = true;
-  // biome-ignore lint/complexity/useMaxParams: node-datachannel callback signature
-  initLogger('Debug', (level, msg) => {
-    try {
-      appendFileSync(NDC_LOG_PATH, `${new Date().toISOString()} [${level}] ${msg}\n`);
-    } catch {
-      // ignore
-    }
-  });
-}
+const MC_LOG_PATH = `/tmp/psst-mc-${process.pid}.log`;
+const MAX_RTP_PACKET = 65535;
+const FRAME_HEADER_BYTES = 2;
 
 function logCall({ event, detail }: { event: string; detail?: unknown }): void {
   const line =
@@ -42,47 +17,8 @@ function logCall({ event, detail }: { event: string; detail?: unknown }): void {
   try {
     appendFileSync(CALL_LOG_PATH, line);
   } catch {
-    // ignore log failures
+    // ignore
   }
-}
-
-function parseHostPort(url: string): { hostname: string; port: number } {
-  // Accepts "turn:host:port?transport=udp", "stun:host:port", etc.
-  const stripped = url.replace(/^[a-z]+:/, '').split('?')[0]!;
-  const [hostname, portStr] = stripped.split(':');
-  return { hostname: hostname!, port: Number(portStr) || 3478 };
-}
-
-function urlToRelayType(url: string): IceServer['relayType'] {
-  if (url.startsWith('turns:')) {
-    return 'TurnTls';
-  }
-  if (url.includes('transport=tcp')) {
-    return 'TurnTcp';
-  }
-  return 'TurnUdp';
-}
-
-async function fetchIceServers(api: AppContext['api']): Promise<IceServer[]> {
-  const { data, error } = await api('/turn/credentials', {});
-  if (error) {
-    throw new Error('Failed to fetch ICE servers from psst server');
-  }
-  return data.flatMap((server) =>
-    server.urls.map((url): IceServer => {
-      const { hostname, port } = parseHostPort(url);
-      if (url.startsWith('stun:')) {
-        return { hostname, port };
-      }
-      return {
-        hostname,
-        port,
-        username: server.username,
-        password: server.credential,
-        relayType: urlToRelayType(url),
-      };
-    }),
-  );
 }
 
 export interface CallStats {
@@ -99,13 +35,6 @@ export interface ActiveCall {
   stop: () => void;
 }
 
-interface PeerConnectionContext {
-  api: AppContext['api'];
-  roomCode: string;
-  myPeerId: string;
-  targetPeerId: string;
-}
-
 const RTP_HEADER_BYTES = 12;
 const VAD_SILENCE_FLOOR = 8;
 const VAD_SPEECH_CEIL = 45;
@@ -116,81 +45,31 @@ function payloadToLevel(payloadSize: number): number {
   return Math.max(0, Math.min(1, (payloadSize - VAD_SILENCE_FLOOR) / range));
 }
 
-async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
-  pc: PeerConnection;
-  stats: CallStats;
-  stop: () => void;
-}> {
-  initNdcLogger();
-  const allIceServers = await fetchIceServers(ctx.api);
-  // Strip TURN so ICE cannot select a relay pair — forces host or srflx,
-  // which on a shared LAN is sub-millisecond. If both peers are on truly
-  // different networks this will prevent the call from completing.
-  const iceServers = allIceServers.filter((s) => s.relayType === undefined);
-  logCall({
-    event: 'ice-servers',
-    detail: {
-      total: allIceServers.length,
-      used: iceServers.length,
-      excludedRelay: allIceServers.length - iceServers.length,
-    },
-  });
+async function startMcCall({
+  roomCode,
+  peer,
+}: {
+  roomCode: string;
+  peer: Peer;
+}): Promise<ActiveCall> {
+  logCall({ event: 'mc-start', detail: { peer: peer.id, roomCode } });
 
-  const pc = new PeerConnection(ctx.myPeerId, {
-    iceServers,
-    iceTransportPolicy: 'all',
-  });
   const stats: CallStats = {
     sent: 0,
     received: 0,
-    connectionState: 'new',
+    connectionState: 'connecting',
     localLevel: 0,
     remoteLevel: 0,
   };
-  let localCandidates = 0;
-
-  pc.onStateChange((state) => {
-    logCall({ event: 'pc-state', detail: state });
-  });
-  pc.onIceStateChange((state) => {
-    // node-datachannel's onStateChange rarely transitions past 'connecting';
-    // the ICE state is the reliable source of truth for UI.
-    stats.connectionState = state === 'completed' ? 'connected' : state;
-    logCall({ event: 'ice-state', detail: state });
-    if (state === 'connected' || state === 'completed') {
-      try {
-        const pair = pc.getSelectedCandidatePair();
-        logCall({
-          event: 'selected-pair',
-          detail: {
-            local: pair?.local ? { type: pair.local.type, addr: pair.local.address } : null,
-            remote: pair?.remote ? { type: pair.remote.type, addr: pair.remote.address } : null,
-            rtt: pc.rtt(),
-          },
-        });
-      } catch (err) {
-        logCall({
-          event: 'selected-pair-error',
-          detail: { message: (err as Error).message },
-        });
-      }
-    }
-  });
-  pc.onGatheringStateChange((state) => {
-    logCall({ event: 'ice-gathering', detail: state });
-  });
-
-  const audio = new Audio('audio', 'SendRecv');
-  audio.addOpusCodec(OPUS_PAYLOAD_TYPE);
-  audio.setBitrate(64_000);
-  audio.addSSRC(OPUS_SSRC, 'psst-audio');
-  const localTrack = pc.addTrack(audio);
-  // libdatachannel's media-receiver example attaches an RtcpReceivingSession
-  // so RTCP flows and the remote keeps sending media.
-  localTrack.setMediaHandler(new RtcpReceivingSession());
 
   const capture = await startCapture();
   const playback = await startPlayback();
+
+  const helper = Bun.spawn([helperPath, roomCode], {
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: openSync(MC_LOG_PATH, 'a'),
+  });
 
   let stopping = false;
 
@@ -200,256 +79,100 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
       if (stopping) {
         return;
       }
-      if (data.length < RTP_HEADER_BYTES) {
+      if (data.length === 0 || data.length > MAX_RTP_PACKET) {
         return;
       }
-      // libdatachannel requires the RTP packet's SSRC field to match the
-      // SSRC declared in SDP (see libdatachannel media-sender example).
-      // ffmpeg picks a random SSRC; rewrite it to the declared one.
-      data.writeUInt32BE(OPUS_SSRC, RTP_SSRC_OFFSET);
-      if (localTrack.isOpen()) {
-        try {
-          localTrack.sendMessageBinary(data);
-        } catch {
-          // track closed between isOpen() check and send — drop packet
-        }
+      const header = Buffer.allocUnsafe(FRAME_HEADER_BYTES);
+      header.writeUInt16BE(data.length, 0);
+      try {
+        helper.stdin.write(header);
+        helper.stdin.write(data);
+      } catch {
+        // helper closed
       }
       stats.sent++;
-      const payloadSize = data.length - RTP_HEADER_BYTES;
+      const payloadSize = Math.max(0, data.length - RTP_HEADER_BYTES);
       stats.localLevel =
         stats.localLevel * VAD_SMOOTHING + payloadToLevel(payloadSize) * (1 - VAD_SMOOTHING);
     },
   });
 
-  const attachRemote = (track: Track) => {
-    track.onMessage((data) => {
-      if (stopping) {
-        return;
+  // Parse length-prefixed frames from the helper and forward to playback.
+  (async () => {
+    let buffer = Buffer.alloc(0);
+    try {
+      for await (const chunk of helper.stdout) {
+        if (stopping) {
+          return;
+        }
+        buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
+        while (buffer.length >= FRAME_HEADER_BYTES) {
+          const len = buffer.readUInt16BE(0);
+          const total = FRAME_HEADER_BYTES + len;
+          if (buffer.length < total) {
+            break;
+          }
+          const payload = buffer.subarray(FRAME_HEADER_BYTES, total);
+          if (stats.received === 0) {
+            stats.connectionState = 'connected';
+            logCall({ event: 'mc-connected' });
+          }
+          playback.write(new Uint8Array(payload));
+          stats.received++;
+          const payloadSize = Math.max(0, payload.length - RTP_HEADER_BYTES);
+          stats.remoteLevel =
+            stats.remoteLevel * VAD_SMOOTHING + payloadToLevel(payloadSize) * (1 - VAD_SMOOTHING);
+          buffer = buffer.subarray(total);
+        }
       }
-      if (data.length < RTP_HEADER_BYTES) {
-        return;
-      }
-      // Drop RTCP (RFC 5761 payload types 72–76) so only RTP reaches ffmpeg.
-      const packetType = data[1]! & 0x7f;
-      if (packetType >= 72 && packetType <= 76) {
-        return;
-      }
-      playback.write(new Uint8Array(data));
-      stats.received++;
-      const payloadSize = data.length - RTP_HEADER_BYTES;
-      stats.remoteLevel =
-        stats.remoteLevel * VAD_SMOOTHING + payloadToLevel(payloadSize) * (1 - VAD_SMOOTHING);
-    });
-  };
-
-  pc.onTrack((track) => {
-    attachRemote(track);
-  });
-  attachRemote(localTrack);
-
-  const statsLogger = setInterval(() => {
-    if (stopping) {
-      return;
+    } catch {
+      // helper closed
     }
-    logCall({
-      event: 'rtp-counters',
-      detail: { sent: stats.sent, received: stats.received },
-    });
-  }, 2000);
+  })();
 
-  // biome-ignore lint/complexity/useMaxParams: node-datachannel callback signature
-  pc.onLocalCandidate((candidate, mid) => {
-    localCandidates++;
-    logCall({
-      event: 'local-candidate',
-      detail: { n: localCandidates, candidate, mid },
-    });
-    ctx.api('/rooms/:code/ice/:peerId', {
-      method: 'POST',
-      params: { code: ctx.roomCode, peerId: ctx.targetPeerId },
-      headers: { 'psst-peer-id': ctx.myPeerId },
-      body: { candidate: { candidate, mid } },
-    });
+  helper.exited.then((code) => {
+    logCall({ event: 'mc-exit', detail: { code } });
+    if (!stopping) {
+      stats.connectionState = 'closed';
+    }
   });
 
   return {
-    pc,
+    peer,
     stats,
     stop: () => {
       if (stopping) {
         return;
       }
       stopping = true;
-      clearInterval(statsLogger);
-      // Order matters: stop the sources of native calls BEFORE destroying
-      // the PeerConnection, or libdatachannel throws a C++ exception on
-      // sendMessageBinary/playback.write against freed native memory.
       rtpListener.stop();
       capture.stop();
       playback.stop();
       try {
-        pc.close();
+        helper.stdin.end();
       } catch {
         // already closed
       }
+      helper.kill();
     },
   };
 }
 
-interface SignalDescription {
-  sdp: string;
-  type: 'offer' | 'answer';
-}
-
-function waitForLocalDescription(pc: PeerConnection): Promise<SignalDescription> {
-  return new Promise((resolve) => {
-    // biome-ignore lint/complexity/useMaxParams: node-datachannel callback signature
-    pc.onLocalDescription((sdp, type) => {
-      if (type === 'offer' || type === 'answer') {
-        resolve({ sdp, type });
-      }
-    });
-  });
-}
-
-export async function startCall({
-  api,
-  roomCode,
-  myPeerId,
-  peer,
-}: {
+export async function startCall(opts: {
   api: AppContext['api'];
   roomCode: string;
   myPeerId: string;
   peer: Peer;
 }): Promise<ActiveCall> {
-  logCall({ event: 'startCall', detail: { peer: peer.id, role: 'caller' } });
-  const { pc, stats, stop } = await createPeerConnection({
-    api,
-    roomCode,
-    myPeerId,
-    targetPeerId: peer.id,
-  });
-
-  const readyPromise = waitForLocalDescription(pc);
-  pc.setLocalDescription();
-  const localDesc = await readyPromise;
-  logCall({ event: 'local-description-set', detail: 'offer' });
-
-  const { data, error } = await api('/rooms/:code/call/:peerId', {
-    method: 'POST',
-    params: { code: roomCode, peerId: peer.id },
-    headers: { 'psst-peer-id': myPeerId },
-    body: { offer: localDesc },
-  });
-
-  if (error) {
-    stop();
-    throw new Error(
-      error.status === HTTP_STATUS_REQUEST_TIMEOUT ? 'Call timed out' : 'Call failed',
-    );
-  }
-
-  const answer = data.answer as SignalDescription;
-  pc.setRemoteDescription(answer.sdp, answer.type);
-  logCall({ event: 'remote-description-set', detail: 'answer' });
-
-  pollIceCandidates({ api, roomCode, myPeerId, pc });
-
-  return { peer, stats, stop };
+  return startMcCall({ roomCode: opts.roomCode, peer: opts.peer });
 }
 
-export async function answerCall({
-  api,
-  roomCode,
-  myPeerId,
-  peer,
-  offer,
-}: {
+export async function answerCall(opts: {
   api: AppContext['api'];
   roomCode: string;
   myPeerId: string;
   peer: Peer;
   offer: unknown;
 }): Promise<ActiveCall> {
-  logCall({ event: 'answerCall', detail: { peer: peer.id, role: 'callee' } });
-  const { pc, stats, stop } = await createPeerConnection({
-    api,
-    roomCode,
-    myPeerId,
-    targetPeerId: peer.id,
-  });
-
-  const offerDesc = offer as SignalDescription;
-  const readyPromise = waitForLocalDescription(pc);
-  pc.setRemoteDescription(offerDesc.sdp, offerDesc.type);
-  logCall({ event: 'remote-description-set', detail: 'offer' });
-
-  const localDesc = await readyPromise;
-  logCall({ event: 'local-description-set', detail: 'answer' });
-
-  await api('/rooms/:code/calls/answer/:peerId', {
-    method: 'POST',
-    params: { code: roomCode, peerId: peer.id },
-    body: { answer: localDesc },
-  });
-
-  pollIceCandidates({ api, roomCode, myPeerId, pc });
-
-  return { peer, stats, stop };
-}
-
-interface RemoteCandidate {
-  candidate: string;
-  mid: string;
-}
-
-async function pollIceCandidates({
-  api,
-  roomCode,
-  myPeerId,
-  pc,
-}: {
-  api: AppContext['api'];
-  roomCode: string;
-  myPeerId: string;
-  pc: PeerConnection;
-}) {
-  let active = true;
-  pc.onStateChange((state) => {
-    if (state === 'closed' || state === 'failed' || state === 'disconnected') {
-      active = false;
-    }
-  });
-
-  logCall({ event: 'ice-poll-start' });
-
-  while (active) {
-    const { data, error } = await api('/rooms/:code/ice/poll', {
-      params: { code: roomCode },
-      headers: { 'psst-peer-id': myPeerId },
-      signal: AbortSignal.timeout(35_000),
-    }).catch(() => ({ data: undefined, error: { status: 0 } }));
-
-    if (error) {
-      if (error.status === HTTP_STATUS_REQUEST_TIMEOUT) {
-        continue;
-      }
-      if (!active) {
-        break;
-      }
-      continue;
-    }
-
-    const remote = data.candidate as RemoteCandidate;
-    logCall({ event: 'remote-candidate', detail: remote });
-    try {
-      pc.addRemoteCandidate(remote.candidate, remote.mid);
-    } catch (err) {
-      logCall({
-        event: 'remote-candidate-error',
-        detail: { message: (err as Error).message },
-      });
-    }
-  }
+  return startMcCall({ roomCode: opts.roomCode, peer: opts.peer });
 }

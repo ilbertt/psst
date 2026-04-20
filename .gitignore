@@ -42,3 +42,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 *.db
 *.db-wal
 *.db-shm
+
+# Compiled MC helper binary (rebuilt via build/index.ts)
+apps/cli/src/services/mc-helper/psst-mc

@@ -35,6 +35,28 @@ if (swift.exitCode !== 0) {
   process.exit(1);
 }
 
+if (process.platform === 'darwin') {
+  console.log('🔏 Codesigning MC helper...');
+  // Ad-hoc sign so macOS TCC recognises the helper as a principal that can
+  // request Local Network permission. Without a signature, the prompt never
+  // fires and MC invites are silently dropped.
+  const signHelper = Bun.spawnSync([
+    'codesign',
+    '--force',
+    '--sign',
+    '-',
+    '--identifier',
+    'dev.ilbertt.psst.mc-helper',
+    '--entitlements',
+    join(BUILD_SCRIPTS_DIR, 'entitlements.plist'),
+    MC_HELPER_BIN,
+  ]);
+  if (signHelper.exitCode !== 0) {
+    console.error('❌ helper codesign failed:', signHelper.stderr.toString());
+    process.exit(1);
+  }
+}
+
 console.log('🔨 Compiling binary...');
 const buildResult = await Bun.build({
   entrypoints: ['./src/index.ts'],

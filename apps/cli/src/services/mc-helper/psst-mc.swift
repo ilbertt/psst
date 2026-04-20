@@ -33,7 +33,7 @@ let localPeer = MCPeerID(displayName: String("\(hostName)-\(suffix)".prefix(63))
 let session = MCSession(
     peer: localPeer,
     securityIdentity: nil,
-    encryptionPreference: .none
+    encryptionPreference: .required
 )
 
 final class Runner: NSObject, MCSessionDelegate,

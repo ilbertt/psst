@@ -117,9 +117,8 @@ export async function startPlayback(): Promise<AudioPlayback> {
 
   const proc = Bun.spawn(
     [
-      'ffplay',
-      '-nodisp',
-      '-autoexit',
+      'ffmpeg',
+      '-nostdin',
       '-hide_banner',
       '-loglevel',
       'info',
@@ -131,6 +130,9 @@ export async function startPlayback(): Promise<AudioPlayback> {
       'file,udp,rtp',
       '-i',
       sdpPath,
+      '-f',
+      'audiotoolbox',
+      '-',
     ],
     {
       stdin: 'ignore',

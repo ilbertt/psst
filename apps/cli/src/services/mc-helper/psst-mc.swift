@@ -147,12 +147,22 @@ final class Runner: NSObject, MCSessionDelegate,
     // MARK: - Advertiser
 
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer peerID: MCPeerID, withContext context: Data?, invitationHandler: @escaping (Bool, MCSession?) -> Void) {
+        logErr("invitation from \(peerID.displayName) (connected=\(connected?.displayName ?? "nil"))")
         if connected == nil {
             logErr("accepting invite from \(peerID.displayName)")
             invitationHandler(true, session)
         } else {
+            logErr("rejecting invite from \(peerID.displayName) — already connected")
             invitationHandler(false, nil)
         }
+    }
+
+    func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {
+        logErr("advertiser error: \(error.localizedDescription)")
+    }
+
+    func browser(_ browser: MCNearbyServiceBrowser, didNotStartBrowsingForPeers error: Error) {
+        logErr("browser error: \(error.localizedDescription)")
     }
 
     // MARK: - Browser

@@ -140,7 +140,9 @@ export async function startPlayback(): Promise<AudioPlayback> {
       sdpPath,
       '-f',
       'audiotoolbox',
-      '-',
+      '-audio_device_index',
+      '0',
+      'default',
     ],
     {
       stdin: 'ignore',

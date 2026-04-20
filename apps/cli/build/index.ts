@@ -2,7 +2,8 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { embedNodeDataChannelPlugin } from './embed-node-datachannel';
 
-const APP_DIR = join(import.meta.dir, '..');
+const BUILD_SCRIPTS_DIR = import.meta.dir;
+const APP_DIR = join(BUILD_SCRIPTS_DIR, '..');
 const DIST_DIR = join(APP_DIR, 'dist');
 const CLI_OUT = join(DIST_DIR, 'psst');
 
@@ -31,5 +32,24 @@ const built = await Promise.all(
   }),
 );
 console.log(`📦 Built: ${built.join(', ')}`);
+
+if (process.platform === 'darwin') {
+  console.log('🔏 Ad-hoc codesigning with entitlements...');
+  const entitlements = join(BUILD_SCRIPTS_DIR, 'entitlements.plist');
+  const sign = Bun.spawnSync([
+    'codesign',
+    '--force',
+    '--deep',
+    '--sign',
+    '-',
+    '--entitlements',
+    entitlements,
+    CLI_OUT,
+  ]);
+  if (sign.exitCode !== 0) {
+    console.error('❌ codesign failed:', sign.stderr.toString());
+    process.exit(1);
+  }
+}
 
 console.log('✅ Done');

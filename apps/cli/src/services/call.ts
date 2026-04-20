@@ -133,7 +133,7 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
 
   const pc = new PeerConnection(ctx.myPeerId, {
     iceServers,
-    iceTransportPolicy: 'relay',
+    iceTransportPolicy: 'all',
   });
   const stats: CallStats = {
     sent: 0,

@@ -152,6 +152,24 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
     // the ICE state is the reliable source of truth for UI.
     stats.connectionState = state === 'completed' ? 'connected' : state;
     logCall({ event: 'ice-state', detail: state });
+    if (state === 'connected' || state === 'completed') {
+      try {
+        const pair = pc.getSelectedCandidatePair();
+        logCall({
+          event: 'selected-pair',
+          detail: {
+            local: pair?.local ? { type: pair.local.type, addr: pair.local.address } : null,
+            remote: pair?.remote ? { type: pair.remote.type, addr: pair.remote.address } : null,
+            rtt: pc.rtt(),
+          },
+        });
+      } catch (err) {
+        logCall({
+          event: 'selected-pair-error',
+          detail: { message: (err as Error).message },
+        });
+      }
+    }
   });
   pc.onGatheringStateChange((state) => {
     logCall({ event: 'ice-gathering', detail: state });

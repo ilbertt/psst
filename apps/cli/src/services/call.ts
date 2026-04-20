@@ -122,12 +122,17 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   stop: () => void;
 }> {
   initNdcLogger();
-  const iceServers = await fetchIceServers(ctx.api);
+  const allIceServers = await fetchIceServers(ctx.api);
+  // Strip TURN so ICE cannot select a relay pair — forces host or srflx,
+  // which on a shared LAN is sub-millisecond. If both peers are on truly
+  // different networks this will prevent the call from completing.
+  const iceServers = allIceServers.filter((s) => s.relayType === undefined);
   logCall({
     event: 'ice-servers',
     detail: {
-      count: iceServers.length,
-      hasTurn: iceServers.some((s) => s.relayType !== undefined),
+      total: allIceServers.length,
+      used: iceServers.length,
+      excludedRelay: allIceServers.length - iceServers.length,
     },
   });
 

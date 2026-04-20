@@ -298,7 +298,7 @@ async function promptCode(): Promise<string | null> {
 
     const input = new InputRenderable(renderer, {
       id: 'code',
-      width: ROOM_CODE_LENGTH,
+      width: ROOM_CODE_LENGTH + 2,
       placeholder: 'ABCD',
       backgroundColor: '#1f2937',
       textColor: COLORS.accent,

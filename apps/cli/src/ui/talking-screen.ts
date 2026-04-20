@@ -11,58 +11,59 @@ import type { Peer } from '#types.ts';
 const COLORS = {
   bg: '#0f0f1a',
   speaking: '#fbbf24',
-  idle: '#4b5563',
+  idle: '#374151',
   label: '#e5e7eb',
   dim: '#6b7280',
   hint: '#374151',
 };
 
-const SPEAKING_THRESHOLD = 0.12;
-const ANIMATION_INTERVAL_MS = 60;
+const SPEAKING_THRESHOLD = 0.2;
+const ANIMATION_INTERVAL_MS = 80;
 const TIMER_INTERVAL_MS = 1000;
 
-const FACE_HAIR = '  ___  ';
-const FACE_BROW = ' /   \\ ';
-const FACE_EYES = '( o o )';
-const FACE_CHIN = '  ───  ';
+const FACE_TOP = '╭───╮';
+const FACE_EYES = '│● ●│';
+const FACE_BOTTOM = '╰───╯';
 
-const MOUTHS = [' \\ ─ / ', ' \\ o / ', ' \\ O / '];
+const MOUTHS = ['│ ─ │', '│ o │', '│ O │', '│ ◯ │'];
 
 function levelToMouth(level: number): string {
-  if (level < 0.12) {
+  if (level < SPEAKING_THRESHOLD) {
     return MOUTHS[0]!;
   }
-  if (level < 0.35) {
+  if (level < 0.6) {
     return MOUTHS[1]!;
   }
-  return MOUTHS[2]!;
+  if (level < 0.85) {
+    return MOUTHS[2]!;
+  }
+  return MOUTHS[3]!;
 }
 
-interface FaceHandles {
+interface PersonHandles {
   setLevel: (level: number) => void;
 }
 
-// biome-ignore lint/complexity/useMaxParams: builder takes renderer + face options
-function buildFace(
-  renderer: CliRenderer,
-  { name, idPrefix }: { name: string; idPrefix: string },
-): { box: BoxRenderable; handles: FaceHandles } {
-  const box = new BoxRenderable(renderer, {
-    id: `${idPrefix}-face`,
+function buildPerson(opts: { renderer: CliRenderer; name: string; idPrefix: string }): {
+  box: BoxRenderable;
+  handles: PersonHandles;
+} {
+  const box = new BoxRenderable(opts.renderer, {
+    id: `${opts.idPrefix}-person`,
     flexDirection: 'column',
     alignItems: 'center',
     marginX: 4,
   });
 
-  const faceLines = [FACE_HAIR, FACE_BROW, FACE_EYES, MOUTHS[0]!, FACE_CHIN];
+  const faceLines = [FACE_TOP, FACE_EYES, MOUTHS[0]!, FACE_BOTTOM];
   const lines: TextRenderable[] = [];
   let lineIdx = 0;
   for (const content of faceLines) {
-    const line = new TextRenderable(renderer, {
-      id: `${idPrefix}-line-${lineIdx}`,
+    const line = new TextRenderable(opts.renderer, {
+      id: `${opts.idPrefix}-face-${lineIdx}`,
       content,
       fg: COLORS.idle,
-      width: 7,
+      width: 5,
       height: 1,
     });
     lines.push(line);
@@ -71,34 +72,33 @@ function buildFace(
   }
 
   box.add(
-    new TextRenderable(renderer, {
-      id: `${idPrefix}-name`,
-      content: name,
+    new TextRenderable(opts.renderer, {
+      id: `${opts.idPrefix}-name`,
+      content: opts.name,
       fg: COLORS.label,
       marginTop: 1,
     }),
   );
 
-  const mouthLine = lines[3]!;
-  let lastColor = COLORS.idle;
+  const mouthLine = lines[2]!;
   let lastMouth = MOUTHS[0]!;
+  let lastColor = COLORS.idle;
 
   return {
     box,
     handles: {
       setLevel(level: number) {
-        const speaking = level >= SPEAKING_THRESHOLD;
-        const color = speaking ? COLORS.speaking : COLORS.idle;
         const mouth = levelToMouth(level);
+        const color = level >= SPEAKING_THRESHOLD ? COLORS.speaking : COLORS.idle;
+        if (mouth !== lastMouth) {
+          mouthLine.content = mouth;
+          lastMouth = mouth;
+        }
         if (color !== lastColor) {
           for (const line of lines) {
             line.fg = color;
           }
           lastColor = color;
-        }
-        if (mouth !== lastMouth) {
-          mouthLine.content = mouth;
-          lastMouth = mouth;
         }
       },
     },
@@ -139,18 +139,18 @@ export async function showTalkingScreen({
     }),
   );
 
-  const facesRow = new BoxRenderable(renderer, {
-    id: 'faces',
+  const peopleRow = new BoxRenderable(renderer, {
+    id: 'people',
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'center',
   });
-  page.add(facesRow);
+  page.add(peopleRow);
 
-  const me = buildFace(renderer, { name: 'You', idPrefix: 'me' });
-  const them = buildFace(renderer, { name: peer.name, idPrefix: 'them' });
-  facesRow.add(me.box);
-  facesRow.add(them.box);
+  const me = buildPerson({ renderer, name: 'You', idPrefix: 'me' });
+  const them = buildPerson({ renderer, name: peer.name, idPrefix: 'them' });
+  peopleRow.add(me.box);
+  peopleRow.add(them.box);
 
   const timerText = new TextRenderable(renderer, {
     id: 'timer',

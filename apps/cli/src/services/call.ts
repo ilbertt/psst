@@ -1,5 +1,12 @@
 import { appendFileSync } from 'node:fs';
-import { Audio, type IceServer, PeerConnection, type Track } from 'node-datachannel';
+import {
+  Audio,
+  type IceServer,
+  initLogger,
+  PeerConnection,
+  RtcpReceivingSession,
+  type Track,
+} from 'node-datachannel';
 import type { AppContext } from '#context.ts';
 import type { Peer } from '#types.ts';
 import { listenForRtp, startCapture, startPlayback } from './audio.ts';
@@ -9,6 +16,23 @@ const OPUS_PAYLOAD_TYPE = 111;
 const OPUS_SSRC = 0x10000000 + Math.floor(Math.random() * 0x7fffffff);
 const RTP_SSRC_OFFSET = 8;
 const CALL_LOG_PATH = `/tmp/psst-call-${process.pid}.log`;
+const NDC_LOG_PATH = `/tmp/psst-ndc-${process.pid}.log`;
+
+let loggerInitialized = false;
+function initNdcLogger(): void {
+  if (loggerInitialized) {
+    return;
+  }
+  loggerInitialized = true;
+  // biome-ignore lint/complexity/useMaxParams: node-datachannel callback signature
+  initLogger('Debug', (level, msg) => {
+    try {
+      appendFileSync(NDC_LOG_PATH, `${new Date().toISOString()} [${level}] ${msg}\n`);
+    } catch {
+      // ignore
+    }
+  });
+}
 
 function logCall({ event, detail }: { event: string; detail?: unknown }): void {
   const line =
@@ -97,6 +121,7 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   stats: CallStats;
   stop: () => void;
 }> {
+  initNdcLogger();
   const iceServers = await fetchIceServers(ctx.api);
   logCall({
     event: 'ice-servers',
@@ -120,10 +145,12 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   let localCandidates = 0;
 
   pc.onStateChange((state) => {
-    stats.connectionState = state;
     logCall({ event: 'pc-state', detail: state });
   });
   pc.onIceStateChange((state) => {
+    // node-datachannel's onStateChange rarely transitions past 'connecting';
+    // the ICE state is the reliable source of truth for UI.
+    stats.connectionState = state === 'completed' ? 'connected' : state;
     logCall({ event: 'ice-state', detail: state });
   });
   pc.onGatheringStateChange((state) => {
@@ -135,6 +162,9 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   audio.setBitrate(64_000);
   audio.addSSRC(OPUS_SSRC, 'psst-audio');
   const localTrack = pc.addTrack(audio);
+  // libdatachannel's media-receiver example attaches an RtcpReceivingSession
+  // so RTCP flows and the remote keeps sending media.
+  localTrack.setMediaHandler(new RtcpReceivingSession());
 
   const capture = await startCapture();
   const playback = await startPlayback();
@@ -186,6 +216,16 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   });
   attachRemote(localTrack);
 
+  const statsLogger = setInterval(() => {
+    if (stopping) {
+      return;
+    }
+    logCall({
+      event: 'rtp-counters',
+      detail: { sent: stats.sent, received: stats.received },
+    });
+  }, 2000);
+
   // biome-ignore lint/complexity/useMaxParams: node-datachannel callback signature
   pc.onLocalCandidate((candidate, mid) => {
     localCandidates++;
@@ -209,6 +249,7 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
         return;
       }
       stopping = true;
+      clearInterval(statsLogger);
       // Order matters: stop the sources of native calls BEFORE destroying
       // the PeerConnection, or libdatachannel throws a C++ exception on
       // sendMessageBinary/playback.write against freed native memory.

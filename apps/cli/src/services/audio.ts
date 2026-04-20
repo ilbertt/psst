@@ -115,47 +115,29 @@ export async function startPlayback(): Promise<AudioPlayback> {
 
   const logPath = `/tmp/psst-playback-${process.pid}.log`;
 
-  const pipeline = [
-    'ffmpeg',
-    '-nostdin',
-    '-hide_banner',
-    '-loglevel',
-    'info',
-    '-fflags',
-    'nobuffer',
-    '-protocol_whitelist',
-    'file,udp,rtp',
-    '-acodec',
-    'libopus',
-    '-i',
-    sdpPath,
-    '-f',
-    'wav',
-    '-ar',
-    '48000',
-    '-ac',
-    '2',
-    '-',
-    '|',
-    'ffplay',
-    '-nodisp',
-    '-autoexit',
-    '-hide_banner',
-    '-loglevel',
-    'info',
-    '-fflags',
-    'nobuffer',
-    '-f',
-    'wav',
-    '-i',
-    'pipe:0',
-  ].join(' ');
-
-  const proc = Bun.spawn(['sh', '-c', pipeline], {
-    stdin: 'ignore',
-    stdout: 'ignore',
-    stderr: openSync(logPath, 'a'),
-  });
+  const proc = Bun.spawn(
+    [
+      'ffplay',
+      '-nodisp',
+      '-autoexit',
+      '-hide_banner',
+      '-loglevel',
+      'info',
+      '-fflags',
+      'nobuffer',
+      '-flags',
+      'low_delay',
+      '-protocol_whitelist',
+      'file,udp,rtp',
+      '-i',
+      sdpPath,
+    ],
+    {
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: openSync(logPath, 'a'),
+    },
+  );
 
   await waitForUdpPort(playbackPort);
 

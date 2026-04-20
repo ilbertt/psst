@@ -19,6 +19,6 @@
     "@opentui/core": "^0.1.96",
     "@repo/server": "workspace:*",
     "@stricli/core": "^1.2.6",
-    "werift": "^0.22.9"
+    "node-datachannel": "^0.32.2"
   }
 }

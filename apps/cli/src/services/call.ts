@@ -1,23 +1,61 @@
-import { MediaStreamTrack, RTCPeerConnection } from 'werift';
+import { appendFileSync } from 'node:fs';
+import { Audio, type IceServer, PeerConnection, type Track } from 'node-datachannel';
 import type { AppContext } from '#context.ts';
 import type { Peer } from '#types.ts';
 import { listenForRtp, startCapture, startPlayback } from './audio.ts';
 
 const HTTP_STATUS_REQUEST_TIMEOUT = 408;
+const OPUS_PAYLOAD_TYPE = 111;
+const CALL_LOG_PATH = `/tmp/psst-call-${process.pid}.log`;
 
-type RTCIceServer = { urls: string; username?: string; credential?: string };
+function logCall({ event, detail }: { event: string; detail?: unknown }): void {
+  const line =
+    detail === undefined
+      ? `${new Date().toISOString()} ${event}\n`
+      : `${new Date().toISOString()} ${event} ${JSON.stringify(detail)}\n`;
+  try {
+    appendFileSync(CALL_LOG_PATH, line);
+  } catch {
+    // ignore log failures
+  }
+}
 
-async function fetchIceServers(api: AppContext['api']): Promise<RTCIceServer[]> {
+function parseHostPort(url: string): { hostname: string; port: number } {
+  // Accepts "turn:host:port?transport=udp", "stun:host:port", etc.
+  const stripped = url.replace(/^[a-z]+:/, '').split('?')[0]!;
+  const [hostname, portStr] = stripped.split(':');
+  return { hostname: hostname!, port: Number(portStr) || 3478 };
+}
+
+function urlToRelayType(url: string): IceServer['relayType'] {
+  if (url.startsWith('turns:')) {
+    return 'TurnTls';
+  }
+  if (url.includes('transport=tcp')) {
+    return 'TurnTcp';
+  }
+  return 'TurnUdp';
+}
+
+async function fetchIceServers(api: AppContext['api']): Promise<IceServer[]> {
   const { data, error } = await api('/turn/credentials', {});
   if (error) {
     throw new Error('Failed to fetch ICE servers from psst server');
   }
   return data.flatMap((server) =>
-    server.urls.map((url) => ({
-      urls: url,
-      username: server.username,
-      credential: server.credential,
-    })),
+    server.urls.map((url): IceServer => {
+      const { hostname, port } = parseHostPort(url);
+      if (url.startsWith('stun:')) {
+        return { hostname, port };
+      }
+      return {
+        hostname,
+        port,
+        username: server.username,
+        password: server.credential,
+        relayType: urlToRelayType(url),
+      };
+    }),
   );
 }
 
@@ -53,12 +91,23 @@ function payloadToLevel(payloadSize: number): number {
 }
 
 async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
-  pc: RTCPeerConnection;
+  pc: PeerConnection;
   stats: CallStats;
   stop: () => void;
 }> {
   const iceServers = await fetchIceServers(ctx.api);
-  const pc = new RTCPeerConnection({ iceServers });
+  logCall({
+    event: 'ice-servers',
+    detail: {
+      count: iceServers.length,
+      hasTurn: iceServers.some((s) => s.relayType !== undefined),
+    },
+  });
+
+  const pc = new PeerConnection(ctx.myPeerId, {
+    iceServers,
+    iceTransportPolicy: 'relay',
+  });
   const stats: CallStats = {
     sent: 0,
     received: 0,
@@ -66,13 +115,23 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
     localLevel: 0,
     remoteLevel: 0,
   };
+  let localCandidates = 0;
 
-  pc.connectionStateChange.subscribe((state) => {
+  pc.onStateChange((state) => {
     stats.connectionState = state;
+    logCall({ event: 'pc-state', detail: state });
+  });
+  pc.onIceStateChange((state) => {
+    logCall({ event: 'ice-state', detail: state });
+  });
+  pc.onGatheringStateChange((state) => {
+    logCall({ event: 'ice-gathering', detail: state });
   });
 
-  const audioTrack = new MediaStreamTrack({ kind: 'audio' });
-  pc.addTrack(audioTrack);
+  const audio = new Audio('audio', 'SendRecv');
+  audio.addOpusCodec(OPUS_PAYLOAD_TYPE);
+  audio.setBitrate(64_000);
+  const localTrack = pc.addTrack(audio);
 
   const capture = await startCapture();
   const playback = await startPlayback();
@@ -80,7 +139,9 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
   const rtpListener = listenForRtp({
     port: capture.port,
     onPacket: (data) => {
-      audioTrack.writeRtp(data);
+      if (localTrack.isOpen()) {
+        localTrack.sendMessageBinary(data);
+      }
       stats.sent++;
       const payloadSize = Math.max(0, data.length - RTP_HEADER_BYTES);
       stats.localLevel =
@@ -88,25 +149,33 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
     },
   });
 
-  pc.onTrack.subscribe((remoteTrack) => {
-    remoteTrack.onReceiveRtp.subscribe((rtp) => {
-      playback.write(new Uint8Array(rtp.serialize()));
+  const attachRemote = (track: Track) => {
+    track.onMessage((data) => {
+      playback.write(new Uint8Array(data));
       stats.received++;
+      const payloadSize = Math.max(0, data.length - RTP_HEADER_BYTES);
       stats.remoteLevel =
-        stats.remoteLevel * VAD_SMOOTHING +
-        payloadToLevel(rtp.payload.length) * (1 - VAD_SMOOTHING);
+        stats.remoteLevel * VAD_SMOOTHING + payloadToLevel(payloadSize) * (1 - VAD_SMOOTHING);
     });
-  });
+  };
 
-  pc.onIceCandidate.subscribe((candidate) => {
-    if (!candidate) {
-      return;
-    }
+  pc.onTrack((track) => {
+    attachRemote(track);
+  });
+  attachRemote(localTrack);
+
+  // biome-ignore lint/complexity/useMaxParams: node-datachannel callback signature
+  pc.onLocalCandidate((candidate, mid) => {
+    localCandidates++;
+    logCall({
+      event: 'local-candidate',
+      detail: { n: localCandidates, candidate, mid },
+    });
     ctx.api('/rooms/:code/ice/:peerId', {
       method: 'POST',
       params: { code: ctx.roomCode, peerId: ctx.targetPeerId },
       headers: { 'psst-peer-id': ctx.myPeerId },
-      body: { candidate: candidate.toJSON() },
+      body: { candidate: { candidate, mid } },
     });
   });
 
@@ -114,12 +183,32 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
     pc,
     stats,
     stop: () => {
-      pc.close();
+      try {
+        pc.close();
+      } catch {
+        // already closed
+      }
       rtpListener.stop();
       capture.stop();
       playback.stop();
     },
   };
+}
+
+interface SignalDescription {
+  sdp: string;
+  type: 'offer' | 'answer';
+}
+
+function waitForLocalDescription(pc: PeerConnection): Promise<SignalDescription> {
+  return new Promise((resolve) => {
+    // biome-ignore lint/complexity/useMaxParams: node-datachannel callback signature
+    pc.onLocalDescription((sdp, type) => {
+      if (type === 'offer' || type === 'answer') {
+        resolve({ sdp, type });
+      }
+    });
+  });
 }
 
 export async function startCall({
@@ -133,6 +222,7 @@ export async function startCall({
   myPeerId: string;
   peer: Peer;
 }): Promise<ActiveCall> {
+  logCall({ event: 'startCall', detail: { peer: peer.id, role: 'caller' } });
   const { pc, stats, stop } = await createPeerConnection({
     api,
     roomCode,
@@ -140,14 +230,16 @@ export async function startCall({
     targetPeerId: peer.id,
   });
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
+  const readyPromise = waitForLocalDescription(pc);
+  pc.setLocalDescription();
+  const localDesc = await readyPromise;
+  logCall({ event: 'local-description-set', detail: 'offer' });
 
   const { data, error } = await api('/rooms/:code/call/:peerId', {
     method: 'POST',
     params: { code: roomCode, peerId: peer.id },
     headers: { 'psst-peer-id': myPeerId },
-    body: { offer: pc.localDescription },
+    body: { offer: localDesc },
   });
 
   if (error) {
@@ -157,8 +249,9 @@ export async function startCall({
     );
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
-  await pc.setRemoteDescription(data.answer as any);
+  const answer = data.answer as SignalDescription;
+  pc.setRemoteDescription(answer.sdp, answer.type);
+  logCall({ event: 'remote-description-set', detail: 'answer' });
 
   pollIceCandidates({ api, roomCode, myPeerId, pc });
 
@@ -178,6 +271,7 @@ export async function answerCall({
   peer: Peer;
   offer: unknown;
 }): Promise<ActiveCall> {
+  logCall({ event: 'answerCall', detail: { peer: peer.id, role: 'callee' } });
   const { pc, stats, stop } = await createPeerConnection({
     api,
     roomCode,
@@ -185,20 +279,28 @@ export async function answerCall({
     targetPeerId: peer.id,
   });
 
-  // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
-  await pc.setRemoteDescription(offer as any);
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
+  const offerDesc = offer as SignalDescription;
+  const readyPromise = waitForLocalDescription(pc);
+  pc.setRemoteDescription(offerDesc.sdp, offerDesc.type);
+  logCall({ event: 'remote-description-set', detail: 'offer' });
+
+  const localDesc = await readyPromise;
+  logCall({ event: 'local-description-set', detail: 'answer' });
 
   await api('/rooms/:code/calls/answer/:peerId', {
     method: 'POST',
     params: { code: roomCode, peerId: peer.id },
-    body: { answer: pc.localDescription },
+    body: { answer: localDesc },
   });
 
   pollIceCandidates({ api, roomCode, myPeerId, pc });
 
   return { peer, stats, stop };
+}
+
+interface RemoteCandidate {
+  candidate: string;
+  mid: string;
 }
 
 async function pollIceCandidates({
@@ -210,14 +312,16 @@ async function pollIceCandidates({
   api: AppContext['api'];
   roomCode: string;
   myPeerId: string;
-  pc: RTCPeerConnection;
+  pc: PeerConnection;
 }) {
   let active = true;
-  pc.connectionStateChange.subscribe((state) => {
+  pc.onStateChange((state) => {
     if (state === 'closed' || state === 'failed' || state === 'disconnected') {
       active = false;
     }
   });
+
+  logCall({ event: 'ice-poll-start' });
 
   while (active) {
     const { data, error } = await api('/rooms/:code/ice/poll', {
@@ -236,11 +340,15 @@ async function pollIceCandidates({
       continue;
     }
 
+    const remote = data.candidate as RemoteCandidate;
+    logCall({ event: 'remote-candidate', detail: remote });
     try {
-      // biome-ignore lint/suspicious/noExplicitAny: werift expects its own ICE type
-      await pc.addIceCandidate(data.candidate as any);
-    } catch {
-      // skip malformed / out-of-order candidate, keep polling
+      pc.addRemoteCandidate(remote.candidate, remote.mid);
+    } catch (err) {
+      logCall({
+        event: 'remote-candidate-error',
+        detail: { message: (err as Error).message },
+      });
     }
   }
 }

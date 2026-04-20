@@ -162,11 +162,25 @@ export async function showTalkingScreen({
 
   const statusText = new TextRenderable(renderer, {
     id: 'status',
-    content: 'connecting...',
+    content: 'connecting',
     fg: COLORS.hint,
     marginTop: 1,
   });
   page.add(statusText);
+
+  const statusLabel = (state: string): string => {
+    if (state === 'connected') {
+      return 'connected';
+    }
+    if (state === 'failed') {
+      return 'call failed';
+    }
+    if (state === 'closed' || state === 'disconnected') {
+      return state;
+    }
+    return 'connecting';
+  };
+  const isPending = (state: string): boolean => state === 'new' || state === 'connecting';
 
   page.add(
     new TextRenderable(renderer, {
@@ -182,6 +196,9 @@ export async function showTalkingScreen({
   const animInterval = setInterval(() => {
     me.handles.setLevel(stats.localLevel);
     them.handles.setLevel(stats.remoteLevel);
+    const label = statusLabel(stats.connectionState);
+    const dots = '.'.repeat(Math.floor(Date.now() / 500) % 4);
+    statusText.content = isPending(stats.connectionState) ? `${label}${dots}` : label;
     renderer.requestRender();
   }, ANIMATION_INTERVAL_MS);
 
@@ -190,7 +207,6 @@ export async function showTalkingScreen({
     const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
     const secs = String(elapsed % 60).padStart(2, '0');
     timerText.content = `${mins}:${secs}`;
-    statusText.content = stats.connectionState;
     renderer.requestRender();
   }, TIMER_INTERVAL_MS);
 

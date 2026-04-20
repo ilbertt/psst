@@ -20,8 +20,11 @@ guard CommandLine.arguments.count >= 2 else {
 }
 
 let room = CommandLine.arguments[1].lowercased()
-// MC service types: 1–15 chars, [a-z0-9-], must start with letter.
-let serviceType = String("psst-\(room)".prefix(15))
+// Fixed service type declared in Info.plist's NSBonjourServices. The room
+// code is carried in discoveryInfo and used to filter peers on the browse
+// side — macOS 14+ won't let us use dynamic service types anymore.
+let serviceType = "psst"
+let discoveryInfo = ["room": room]
 
 let hostName = Host.current().localizedName ?? "psst"
 // Always append a random suffix so two machines with the same hostname
@@ -40,16 +43,18 @@ final class Runner: NSObject, MCSessionDelegate,
                          MCNearbyServiceAdvertiserDelegate,
                          MCNearbyServiceBrowserDelegate {
     let session: MCSession
+    let room: String
     let advertiser: MCNearbyServiceAdvertiser
     let browser: MCNearbyServiceBrowser
     var connected: MCPeerID?
     let stdoutLock = NSLock()
 
-    init(session: MCSession, serviceType: String) {
+    init(session: MCSession, serviceType: String, room: String, discoveryInfo: [String: String]) {
         self.session = session
+        self.room = room
         self.advertiser = MCNearbyServiceAdvertiser(
             peer: session.myPeerID,
-            discoveryInfo: nil,
+            discoveryInfo: discoveryInfo,
             serviceType: serviceType
         )
         self.browser = MCNearbyServiceBrowser(
@@ -169,6 +174,11 @@ final class Runner: NSObject, MCSessionDelegate,
 
     func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String : String]?) {
         guard peerID != session.myPeerID, connected == nil else { return }
+        // Only pair with peers in the same room.
+        guard info?["room"] == room else {
+            logErr("skipping peer \(peerID.displayName) (room=\(info?["room"] ?? "?"))")
+            return
+        }
         // Deterministic tie-break so only one side invites: lexicographically
         // smaller displayName invites.
         if session.myPeerID.displayName < peerID.displayName {
@@ -182,7 +192,12 @@ final class Runner: NSObject, MCSessionDelegate,
     }
 }
 
-let runner = Runner(session: session, serviceType: serviceType)
+let runner = Runner(
+    session: session,
+    serviceType: serviceType,
+    room: room,
+    discoveryInfo: discoveryInfo
+)
 runner.start()
 logErr("service=\(serviceType) peer=\(localPeer.displayName)")
 

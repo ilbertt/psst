@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>dev.ilbertt.psst.mc-helper</string>
+    <key>CFBundleName</key>
+    <string>psst-mc</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>psst uses the local network to connect you to nearby coworkers.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_psst._tcp</string>
+        <string>_psst._udp</string>
+    </array>
+</dict>
+</plist>

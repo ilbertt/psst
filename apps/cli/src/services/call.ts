@@ -43,9 +43,9 @@ interface PeerConnectionContext {
 }
 
 const RTP_HEADER_BYTES = 12;
-const VAD_SILENCE_FLOOR = 10;
-const VAD_SPEECH_CEIL = 80;
-const VAD_SMOOTHING = 0.6;
+const VAD_SILENCE_FLOOR = 8;
+const VAD_SPEECH_CEIL = 45;
+const VAD_SMOOTHING = 0.5;
 
 function payloadToLevel(payloadSize: number): number {
   const range = VAD_SPEECH_CEIL - VAD_SILENCE_FLOOR;
@@ -140,8 +140,6 @@ export async function startCall({
     targetPeerId: peer.id,
   });
 
-  pollIceCandidates({ api, roomCode, myPeerId, pc });
-
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
@@ -161,6 +159,8 @@ export async function startCall({
 
   // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
   await pc.setRemoteDescription(data.answer as any);
+
+  pollIceCandidates({ api, roomCode, myPeerId, pc });
 
   return { peer, stats, stop };
 }
@@ -185,8 +185,6 @@ export async function answerCall({
     targetPeerId: peer.id,
   });
 
-  pollIceCandidates({ api, roomCode, myPeerId, pc });
-
   // biome-ignore lint/suspicious/noExplicitAny: werift expects its own SDP type
   await pc.setRemoteDescription(offer as any);
   const answer = await pc.createAnswer();
@@ -197,6 +195,8 @@ export async function answerCall({
     params: { code: roomCode, peerId: peer.id },
     body: { answer: pc.localDescription },
   });
+
+  pollIceCandidates({ api, roomCode, myPeerId, pc });
 
   return { peer, stats, stop };
 }
@@ -220,24 +220,27 @@ async function pollIceCandidates({
   });
 
   while (active) {
-    try {
-      const { data, error } = await api('/rooms/:code/ice/poll', {
-        params: { code: roomCode },
-        headers: { 'psst-peer-id': myPeerId },
-        signal: AbortSignal.timeout(35_000),
-      });
+    const { data, error } = await api('/rooms/:code/ice/poll', {
+      params: { code: roomCode },
+      headers: { 'psst-peer-id': myPeerId },
+      signal: AbortSignal.timeout(35_000),
+    }).catch(() => ({ data: undefined, error: { status: 0 } }));
 
-      if (error) {
-        if (error.status === HTTP_STATUS_REQUEST_TIMEOUT) {
-          continue;
-        }
+    if (error) {
+      if (error.status === HTTP_STATUS_REQUEST_TIMEOUT) {
+        continue;
+      }
+      if (!active) {
         break;
       }
+      continue;
+    }
 
+    try {
       // biome-ignore lint/suspicious/noExplicitAny: werift expects its own ICE type
       await pc.addIceCandidate(data.candidate as any);
     } catch {
-      break;
+      // skip malformed / out-of-order candidate, keep polling
     }
   }
 }

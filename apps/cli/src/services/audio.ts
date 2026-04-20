@@ -1,4 +1,5 @@
 import { createSocket } from 'node:dgram';
+import { openSync } from 'node:fs';
 
 const PORT_POLL_INTERVAL_MS = 50;
 
@@ -26,16 +27,6 @@ function getMicInput(): string[] {
   return ['-f', 'dshow', '-i', 'audio=default'];
 }
 
-function getSpeakerOutput(): string[] {
-  if (process.platform === 'darwin') {
-    return ['-f', 'audiotoolbox', 'default'];
-  }
-  if (process.platform === 'linux') {
-    return ['-f', 'alsa', 'default'];
-  }
-  return ['-f', 'dshow', 'default'];
-}
-
 function waitForUdpPort(port: number): Promise<void> {
   return new Promise((resolve) => {
     const check = () => {
@@ -56,26 +47,46 @@ function waitForUdpPort(port: number): Promise<void> {
 export async function startCapture(): Promise<AudioCapture> {
   const port = 10000 + Math.floor(Math.random() * 50000);
 
+  const logPath = `/tmp/psst-capture-${process.pid}.log`;
+  const wavPath = `/tmp/psst-mic-${process.pid}.wav`;
   const proc = Bun.spawn(
     [
       'ffmpeg',
+      '-y',
+      '-nostdin',
       '-hide_banner',
       '-loglevel',
-      'error',
+      'info',
       ...getMicInput(),
+      '-map',
+      '0:a',
       '-acodec',
       'libopus',
+      '-application',
+      'voip',
+      '-ar',
+      String(SAMPLE_RATE),
+      '-ac',
+      String(CHANNELS),
+      '-payload_type',
+      String(PLAYBACK_PT),
+      '-f',
+      'rtp',
+      `rtp://127.0.0.1:${port}`,
+      '-map',
+      '0:a',
       '-ar',
       String(SAMPLE_RATE),
       '-ac',
       String(CHANNELS),
       '-f',
-      'rtp',
-      `rtp://127.0.0.1:${port}`,
+      'wav',
+      wavPath,
     ],
     {
+      stdin: 'ignore',
       stdout: 'ignore',
-      stderr: 'ignore',
+      stderr: openSync(logPath, 'a'),
     },
   );
 
@@ -96,32 +107,55 @@ export async function startPlayback(): Promise<AudioPlayback> {
     't=0 0',
     `m=audio ${playbackPort} RTP/AVP ${PLAYBACK_PT}`,
     `a=rtpmap:${PLAYBACK_PT} opus/48000/2`,
+    `a=fmtp:${PLAYBACK_PT} sprop-stereo=0;stereo=0;useinbandfec=1`,
   ].join('\r\n');
 
   const sdpPath = `/tmp/psst-playback-${playbackPort}.sdp`;
   await Bun.write(sdpPath, sdp);
 
-  const proc = Bun.spawn(
-    [
-      'ffmpeg',
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-protocol_whitelist',
-      'file,udp,rtp',
-      '-i',
-      sdpPath,
-      '-ar',
-      String(SAMPLE_RATE),
-      '-ac',
-      String(CHANNELS),
-      ...getSpeakerOutput(),
-    ],
-    {
-      stdout: 'ignore',
-      stderr: 'ignore',
-    },
-  );
+  const logPath = `/tmp/psst-playback-${process.pid}.log`;
+
+  const pipeline = [
+    'ffmpeg',
+    '-nostdin',
+    '-hide_banner',
+    '-loglevel',
+    'info',
+    '-fflags',
+    'nobuffer',
+    '-protocol_whitelist',
+    'file,udp,rtp',
+    '-acodec',
+    'libopus',
+    '-i',
+    sdpPath,
+    '-f',
+    'wav',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+    '-',
+    '|',
+    'ffplay',
+    '-nodisp',
+    '-autoexit',
+    '-hide_banner',
+    '-loglevel',
+    'info',
+    '-fflags',
+    'nobuffer',
+    '-f',
+    'wav',
+    '-i',
+    'pipe:0',
+  ].join(' ');
+
+  const proc = Bun.spawn(['sh', '-c', pipeline], {
+    stdin: 'ignore',
+    stdout: 'ignore',
+    stderr: openSync(logPath, 'a'),
+  });
 
   await waitForUdpPort(playbackPort);
 

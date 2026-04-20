@@ -23,8 +23,12 @@ let room = CommandLine.arguments[1].lowercased()
 // MC service types: 1–15 chars, [a-z0-9-], must start with letter.
 let serviceType = String("psst-\(room)".prefix(15))
 
-let hostName = Host.current().localizedName ?? "psst-\(UUID().uuidString.prefix(6))"
-let localPeer = MCPeerID(displayName: String(hostName.prefix(63)))
+let hostName = Host.current().localizedName ?? "psst"
+// Always append a random suffix so two machines with the same hostname
+// (common when the same user owns both) get distinct displayNames — our
+// tiebreak on invites relies on them being orderable.
+let suffix = String(UUID().uuidString.prefix(6))
+let localPeer = MCPeerID(displayName: String("\(hostName)-\(suffix)".prefix(63)))
 
 let session = MCSession(
     peer: localPeer,

@@ -203,9 +203,17 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
       if (stopping) {
         return;
       }
+      if (data.length < RTP_HEADER_BYTES) {
+        return;
+      }
+      // Drop RTCP (RFC 5761 payload types 72–76) so only RTP reaches ffmpeg.
+      const packetType = data[1]! & 0x7f;
+      if (packetType >= 72 && packetType <= 76) {
+        return;
+      }
       playback.write(new Uint8Array(data));
       stats.received++;
-      const payloadSize = Math.max(0, data.length - RTP_HEADER_BYTES);
+      const payloadSize = data.length - RTP_HEADER_BYTES;
       stats.remoteLevel =
         stats.remoteLevel * VAD_SMOOTHING + payloadToLevel(payloadSize) * (1 - VAD_SMOOTHING);
     });

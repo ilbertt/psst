@@ -63,7 +63,11 @@ export async function startCapture(): Promise<AudioCapture> {
       '-acodec',
       'libopus',
       '-application',
-      'voip',
+      'lowdelay',
+      '-frame_duration',
+      '10',
+      '-b:a',
+      '64k',
       '-ar',
       String(SAMPLE_RATE),
       '-ac',
@@ -107,7 +111,8 @@ export async function startPlayback(): Promise<AudioPlayback> {
     't=0 0',
     `m=audio ${playbackPort} RTP/AVP ${PLAYBACK_PT}`,
     `a=rtpmap:${PLAYBACK_PT} opus/48000/2`,
-    `a=fmtp:${PLAYBACK_PT} sprop-stereo=0;stereo=0;useinbandfec=1`,
+    `a=fmtp:${PLAYBACK_PT} sprop-stereo=0;stereo=0;useinbandfec=1;minptime=10`,
+    'a=ptime:10',
   ].join('\r\n');
 
   const sdpPath = `/tmp/psst-playback-${playbackPort}.sdp`;

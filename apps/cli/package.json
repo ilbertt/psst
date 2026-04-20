@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
+    "@types/react": "^19.2.14",
     "typescript": "catalog:"
   },
   "imports": {
@@ -15,9 +16,10 @@
   },
   "dependencies": {
     "@elysiajs/eden": "^1.4.8",
-    "@opentui/core": "^0.1.96",
     "@repo/server": "workspace:*",
     "@stricli/core": "^1.2.6",
-    "node-datachannel": "^0.32.2"
+    "ink": "^7.0.1",
+    "node-datachannel": "^0.32.2",
+    "react": "^19.2.5"
   }
 }

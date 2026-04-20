@@ -3,8 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build:darwin-arm64",
-    "build:darwin-arm64": "bun build src/index.ts --compile --minify --bytecode --format=esm --target=bun-darwin-arm64 --outfile dist/psst",
+    "build": "bun run build/index.ts",
     "check:types": "bun run --bun tsc"
   },
   "devDependencies": {

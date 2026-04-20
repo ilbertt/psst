@@ -42,6 +42,9 @@
       "name": "@repo/typescript-config",
     },
   },
+  "trustedDependencies": [
+    "node-datachannel",
+  ],
   "catalog": {
     "typescript": "^5.9.3",
   },

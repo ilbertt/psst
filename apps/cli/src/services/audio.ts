@@ -154,7 +154,14 @@ export async function startPlayback(): Promise<AudioPlayback> {
       stdin: 'ignore',
       stdout: 'ignore',
       stderr: openSync(logPath, 'a'),
-      env: { ...process.env, SDL_AUDIODRIVER: 'coreaudio' },
+      env: {
+        ...process.env,
+        SDL_AUDIODRIVER: 'coreaudio',
+        // Force the SDL audio output buffer to 128 samples (~2.7 ms at
+        // 48 kHz) instead of SDL's default negotiated buffer which can be
+        // 50–200 ms on CoreAudio.
+        SDL_AUDIO_SAMPLES: '128',
+      },
     },
   );
 

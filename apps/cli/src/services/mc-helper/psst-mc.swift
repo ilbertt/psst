@@ -1,6 +1,100 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 import MultipeerConnectivity
+
+// -----------------------------------------------------------------------
+// Pick the best input device: prefer a non-Bluetooth mic (built-in, USB,
+// wired headset) so AirPods/BT headphones stay in A2DP instead of the
+// latency-heavy HFP profile. We call this before AVAudioEngine starts
+// so it inherits the chosen default.
+// -----------------------------------------------------------------------
+
+private func preferNonBluetoothInput() {
+    var size: UInt32 = 0
+    var addr = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDevices,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return }
+    let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+    var devices = [AudioDeviceID](repeating: 0, count: count)
+    guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &devices) == noErr else { return }
+
+    var chosen: AudioDeviceID?
+    var chosenName = ""
+
+    for d in devices {
+        // Must have at least one input channel.
+        var streamAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var cfgSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(d, &streamAddr, 0, nil, &cfgSize) == noErr, cfgSize > 0 else { continue }
+        let bufList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: Int(cfgSize))
+        defer { bufList.deallocate() }
+        guard AudioObjectGetPropertyData(d, &streamAddr, 0, nil, &cfgSize, bufList) == noErr else { continue }
+        var channels: UInt32 = 0
+        let abl = UnsafeMutableAudioBufferListPointer(bufList)
+        for i in 0 ..< abl.count { channels += abl[i].mNumberChannels }
+        if channels == 0 { continue }
+
+        // Transport type: skip Bluetooth.
+        var transportAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var transport: UInt32 = 0
+        var transportSize = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(d, &transportAddr, 0, nil, &transportSize, &transport) == noErr else { continue }
+        if transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE { continue }
+
+        // Get a human-readable name.
+        var nameAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var nameSize = UInt32(MemoryLayout<CFString?>.size)
+        var nameRef: CFString?
+        _ = withUnsafeMutablePointer(to: &nameRef) {
+            AudioObjectGetPropertyData(d, &nameAddr, 0, nil, &nameSize, $0)
+        }
+        let name = (nameRef as String?) ?? "(unknown)"
+
+        // Prefer the built-in mic specifically; fall back to any wired.
+        if transport == kAudioDeviceTransportTypeBuiltIn {
+            chosen = d
+            chosenName = name
+            break
+        }
+        if chosen == nil {
+            chosen = d
+            chosenName = name
+        }
+    }
+
+    guard let d = chosen else { return }
+    var id = d
+    var setAddr = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultInputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    _ = AudioObjectSetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &setAddr,
+        0,
+        nil,
+        UInt32(MemoryLayout<AudioDeviceID>.size),
+        &id
+    )
+    logErr("selected non-BT input: \(chosenName)")
+}
 
 // psst-mc: one native Swift process that does mic capture + MC transport +
 // speaker output in-process. No subprocess audio I/O — everything stays in
@@ -298,6 +392,8 @@ let runner = Runner(
     room: room,
     discoveryInfo: discoveryInfo
 )
+preferNonBluetoothInput()
+
 let bridge = AudioBridge(session: session)
 runner.onConnected = bridge
 

@@ -226,10 +226,9 @@ final class PcmRingBuffer {
     }
 }
 
-// Tight ring: capacity caps the extra latency we can silently accumulate.
-// 50 ms max — if network bursts exceed this we drop oldest rather than
-// letting lag build up.
-let playbackRing = PcmRingBuffer(capacitySeconds: 0.05)
+// 250 ms of headroom for network bursts. Typical occupancy should be a
+// small fraction of this; the telemetry log below reports actual.
+let playbackRing = PcmRingBuffer(capacitySeconds: 0.25)
 
 // -----------------------------------------------------------------------
 // MC session glue

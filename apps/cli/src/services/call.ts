@@ -62,14 +62,20 @@ async function startMcCall({
     remoteLevel: 0,
   };
 
+  logCall({ event: 'capture-begin' });
   const capture = await startCapture();
+  logCall({ event: 'capture-ready', detail: { port: capture.port } });
+  logCall({ event: 'playback-begin' });
   const playback = await startPlayback();
+  logCall({ event: 'playback-ready' });
 
+  logCall({ event: 'helper-spawn', detail: { path: helperPath, roomCode } });
   const helper = Bun.spawn([helperPath, roomCode], {
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: openSync(MC_LOG_PATH, 'a'),
   });
+  logCall({ event: 'helper-spawned', detail: { pid: helper.pid } });
 
   let stopping = false;
 

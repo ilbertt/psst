@@ -96,6 +96,49 @@ private func preferNonBluetoothInput() {
     logErr("selected non-BT input: \(chosenName)")
 }
 
+// -----------------------------------------------------------------------
+// Force the hardware IO buffer on the default input + output devices down
+// to their minimum (typically 32–64 frames = 0.7–1.3 ms @ 48 kHz). The
+// driver may not honour it (BT often rounds up to 256+ anyway), but when
+// it does this shaves real ms off end-to-end latency.
+// -----------------------------------------------------------------------
+
+private func shrinkIOBuffer(forScope scope: AudioObjectPropertyScope, selector: AudioObjectPropertySelector) {
+    var defaultAddr = AudioObjectPropertyAddress(
+        mSelector: selector,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    var device: AudioDeviceID = 0
+    var devSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+    guard AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &defaultAddr, 0, nil, &devSize, &device
+    ) == noErr else { return }
+
+    var rangeAddr = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyBufferFrameSizeRange,
+        mScope: scope,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    var range = AudioValueRange()
+    var rangeSize = UInt32(MemoryLayout<AudioValueRange>.size)
+    guard AudioObjectGetPropertyData(device, &rangeAddr, 0, nil, &rangeSize, &range) == noErr else { return }
+
+    var size = UInt32(range.mMinimum)
+    var setAddr = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyBufferFrameSize,
+        mScope: scope,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    let rc = AudioObjectSetPropertyData(
+        device, &setAddr, 0, nil,
+        UInt32(MemoryLayout<UInt32>.size), &size
+    )
+    let scopeName = scope == kAudioDevicePropertyScopeInput ? "input" : "output"
+    logErr("\(scopeName) buffer frame size -> \(size) (range \(Int(range.mMinimum))..\(Int(range.mMaximum)), rc=\(rc))")
+}
+
 // psst-mc: one native Swift process that does mic capture + MC transport +
 // speaker output in-process. No subprocess audio I/O — everything stays in
 // CoreAudio and libdispatch. Targeting sub-20 ms mouth-to-ear on a
@@ -393,6 +436,10 @@ let runner = Runner(
     discoveryInfo: discoveryInfo
 )
 preferNonBluetoothInput()
+shrinkIOBuffer(forScope: kAudioDevicePropertyScopeInput,
+               selector: kAudioHardwarePropertyDefaultInputDevice)
+shrinkIOBuffer(forScope: kAudioDevicePropertyScopeOutput,
+               selector: kAudioHardwarePropertyDefaultOutputDevice)
 
 let bridge = AudioBridge(session: session)
 runner.onConnected = bridge

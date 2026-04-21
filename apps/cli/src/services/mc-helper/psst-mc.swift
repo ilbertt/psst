@@ -185,7 +185,7 @@ final class PcmRingBuffer {
     private let capacity: Int
     private var writeIdx = 0
     private var readIdx = 0
-    private var available = 0
+    private var availableSamples = 0
     private let lock = NSLock()
 
     init(capacitySeconds: Double) {
@@ -198,8 +198,8 @@ final class PcmRingBuffer {
         for i in 0 ..< count {
             storage[writeIdx] = samples[i]
             writeIdx = (writeIdx + 1) % capacity
-            if available < capacity {
-                available += 1
+            if availableSamples < capacity {
+                availableSamples += 1
             } else {
                 // Overflow: advance reader to make room — drops oldest samples.
                 readIdx = (readIdx + 1) % capacity
@@ -211,17 +211,25 @@ final class PcmRingBuffer {
     /// the rest is zero-filled (silence) by the caller as needed.
     func read(_ dest: UnsafeMutablePointer<Float>, count: Int) -> Int {
         lock.lock(); defer { lock.unlock() }
-        let toRead = min(count, available)
+        let toRead = min(count, availableSamples)
         for i in 0 ..< toRead {
             dest[i] = storage[readIdx]
             readIdx = (readIdx + 1) % capacity
         }
-        available -= toRead
+        availableSamples -= toRead
         return toRead
+    }
+
+    var occupancyMs: Double {
+        lock.lock(); defer { lock.unlock() }
+        return Double(availableSamples) * 1000.0 / SAMPLE_RATE
     }
 }
 
-let playbackRing = PcmRingBuffer(capacitySeconds: 0.25)  // 250 ms safety
+// Tight ring: capacity caps the extra latency we can silently accumulate.
+// 50 ms max — if network bursts exceed this we drop oldest rather than
+// letting lag build up.
+let playbackRing = PcmRingBuffer(capacitySeconds: 0.05)
 
 // -----------------------------------------------------------------------
 // MC session glue
@@ -453,5 +461,14 @@ do {
 
 runner.start()
 logErr("service=\(serviceType) peer=\(localPeer.displayName)")
+
+// Periodic ring-buffer occupancy so we can see the real in-flight latency
+// in the helper log.
+let occupancyTimer = DispatchSource.makeTimerSource(queue: .global(qos: .background))
+occupancyTimer.schedule(deadline: .now() + 1.0, repeating: 1.0)
+occupancyTimer.setEventHandler {
+    logErr(String(format: "ring occupancy: %.1f ms", playbackRing.occupancyMs))
+}
+occupancyTimer.resume()
 
 RunLoop.main.run()

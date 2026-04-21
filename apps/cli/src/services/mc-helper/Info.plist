@@ -8,6 +8,8 @@
     <string>psst-mc</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>psst uses the local network to connect you to nearby coworkers.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>psst needs your microphone so coworkers can hear you.</string>
     <key>NSBonjourServices</key>
     <array>
         <string>_psst._tcp</string>

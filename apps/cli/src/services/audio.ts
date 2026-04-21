@@ -138,6 +138,8 @@ export async function startPlayback(): Promise<AudioPlayback> {
       '32',
       '-buffer_size',
       '65536',
+      '-sync',
+      'ext',
       '-protocol_whitelist',
       'file,udp,rtp',
       '-i',

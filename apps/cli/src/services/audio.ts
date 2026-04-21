@@ -140,6 +140,11 @@ export async function startPlayback(): Promise<AudioPlayback> {
       '65536',
       '-sync',
       'ext',
+      // Minimal aresample to convert Opus's float-planar output to a
+      // packed format SDL/CoreAudio accepts. No async compensation =
+      // no extra latency.
+      '-af',
+      'aresample=first_pts=0',
       '-protocol_whitelist',
       'file,udp,rtp',
       '-i',

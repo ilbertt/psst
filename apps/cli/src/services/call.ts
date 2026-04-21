@@ -164,12 +164,30 @@ async function startMcCall({
   };
 }
 
+const HTTP_STATUS_REQUEST_TIMEOUT = 408;
+const MC_RENDEZVOUS = { kind: 'mc' as const };
+
 export async function startCall(opts: {
   api: AppContext['api'];
   roomCode: string;
   myPeerId: string;
   peer: Peer;
 }): Promise<ActiveCall> {
+  logCall({ event: 'startCall', detail: { peer: opts.peer.id } });
+  // Tell the callee via the existing server signalling that we want to talk.
+  // The body content is ignored by the MC transport — we just need to wake
+  // up their waitForCall poll so both sides reach the MC spawn flow.
+  const { error } = await opts.api('/rooms/:code/call/:peerId', {
+    method: 'POST',
+    params: { code: opts.roomCode, peerId: opts.peer.id },
+    headers: { 'psst-peer-id': opts.myPeerId },
+    body: { offer: MC_RENDEZVOUS },
+  });
+  if (error) {
+    throw new Error(
+      error.status === HTTP_STATUS_REQUEST_TIMEOUT ? 'Call timed out' : 'Call failed',
+    );
+  }
   return startMcCall({ roomCode: opts.roomCode, peer: opts.peer });
 }
 
@@ -180,5 +198,12 @@ export async function answerCall(opts: {
   peer: Peer;
   offer: unknown;
 }): Promise<ActiveCall> {
+  logCall({ event: 'answerCall', detail: { peer: opts.peer.id } });
+  // Ack the caller so their POST resolves and they proceed to spawn MC.
+  await opts.api('/rooms/:code/calls/answer/:peerId', {
+    method: 'POST',
+    params: { code: opts.roomCode, peerId: opts.peer.id },
+    body: { answer: MC_RENDEZVOUS },
+  });
   return startMcCall({ roomCode: opts.roomCode, peer: opts.peer });
 }

@@ -48,7 +48,6 @@ export async function startCapture(): Promise<AudioCapture> {
   const port = 10000 + Math.floor(Math.random() * 50000);
 
   const logPath = `/tmp/psst-capture-${process.pid}.log`;
-  const wavPath = `/tmp/psst-mic-${process.pid}.wav`;
   const proc = Bun.spawn(
     [
       'ffmpeg',
@@ -57,6 +56,12 @@ export async function startCapture(): Promise<AudioCapture> {
       '-hide_banner',
       '-loglevel',
       'info',
+      '-fflags',
+      '+nobuffer',
+      '-flags',
+      'low_delay',
+      '-thread_queue_size',
+      '64',
       ...getMicInput(),
       '-map',
       '0:a',
@@ -68,6 +73,8 @@ export async function startCapture(): Promise<AudioCapture> {
       '10',
       '-b:a',
       '64k',
+      '-vbr',
+      'off',
       '-ar',
       String(SAMPLE_RATE),
       '-ac',
@@ -77,15 +84,6 @@ export async function startCapture(): Promise<AudioCapture> {
       '-f',
       'rtp',
       `rtp://127.0.0.1:${port}`,
-      '-map',
-      '0:a',
-      '-ar',
-      String(SAMPLE_RATE),
-      '-ac',
-      String(CHANNELS),
-      '-f',
-      'wav',
-      wavPath,
     ],
     {
       stdin: 'ignore',
@@ -140,10 +138,6 @@ export async function startPlayback(): Promise<AudioPlayback> {
       '32',
       '-buffer_size',
       '65536',
-      '-sync',
-      'ext',
-      '-af',
-      'aresample=async=1:min_hard_comp=0.010000:first_pts=0',
       '-protocol_whitelist',
       'file,udp,rtp',
       '-i',

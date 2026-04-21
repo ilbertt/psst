@@ -183,13 +183,15 @@ let session = MCSession(
 final class PcmRingBuffer {
     private var storage: [Float]
     private let capacity: Int
+    private let targetSamples: Int
     private var writeIdx = 0
     private var readIdx = 0
     private var availableSamples = 0
     private let lock = NSLock()
 
-    init(capacitySeconds: Double) {
+    init(capacitySeconds: Double, targetLatencySeconds: Double) {
         self.capacity = Int(SAMPLE_RATE * capacitySeconds) * Int(CHANNELS)
+        self.targetSamples = Int(SAMPLE_RATE * targetLatencySeconds) * Int(CHANNELS)
         self.storage = Array(repeating: 0, count: self.capacity)
     }
 
@@ -204,6 +206,15 @@ final class PcmRingBuffer {
                 // Overflow: advance reader to make room — drops oldest samples.
                 readIdx = (readIdx + 1) % capacity
             }
+        }
+        // Actively drain: if we're carrying more than the target latency,
+        // drop oldest samples to catch up with realtime. Prevents burst
+        // arrivals from permanently settling into the buffer and adding
+        // static latency.
+        if availableSamples > targetSamples {
+            let drop = availableSamples - targetSamples
+            readIdx = (readIdx + drop) % capacity
+            availableSamples = targetSamples
         }
     }
 
@@ -226,9 +237,10 @@ final class PcmRingBuffer {
     }
 }
 
-// 250 ms of headroom for network bursts. Typical occupancy should be a
-// small fraction of this; the telemetry log below reports actual.
-let playbackRing = PcmRingBuffer(capacitySeconds: 0.25)
+// 250 ms capacity absorbs bursts; 30 ms target keeps in-flight latency
+// near the floor. Whenever a write pushes us over 30 ms, we drop the
+// oldest samples to catch up with realtime.
+let playbackRing = PcmRingBuffer(capacitySeconds: 0.25, targetLatencySeconds: 0.03)
 
 // -----------------------------------------------------------------------
 // MC session glue

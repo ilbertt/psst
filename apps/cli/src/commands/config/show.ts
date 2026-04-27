@@ -1,16 +1,11 @@
-import { buildCommand } from '@stricli/core';
-import type { AppContext } from '#context.ts';
+import { defineCommand } from '@parshjs/core';
 
-export const configShow = buildCommand({
-  docs: {
-    brief: 'Show current config',
-  },
-  parameters: { flags: {} },
-  // biome-ignore lint/complexity/useMaxParams: Stricli func signature
-  async func(this: AppContext, _flags) {
-    const config = this.config.all;
-    for (const [key, value] of Object.entries(config)) {
-      this.process.stdout.write(`  ${key} = ${value}\n`);
+export const command = defineCommand('config show', {
+  description: 'Show current config',
+  options: {},
+  handler: ({ context, print }) => {
+    for (const [key, value] of Object.entries(context.config.value)) {
+      print.info(`  ${key} = ${value}`);
     }
   },
-} satisfies Parameters<typeof buildCommand<Record<string, never>, [], AppContext>>[0]);
+});

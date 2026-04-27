@@ -1,12 +1,15 @@
 {
   "name": "@repo/cli",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun run build/index.ts",
-    "check:types": "bun run --bun tsc"
+    "generate": "parsh-codegen generate --commands src/commands --out src/commandTree.gen.ts",
+    "build": "bun run generate && bun run build/index.ts",
+    "check:types": "bun run generate && bun run --bun tsc"
   },
   "devDependencies": {
+    "@parshjs/codegen": "^0.0.3",
     "@repo/typescript-config": "workspace:*",
     "typescript": "catalog:"
   },
@@ -16,8 +19,10 @@
   "dependencies": {
     "@elysiajs/eden": "^1.4.8",
     "@opentui/core": "^0.1.96",
+    "@parshjs/core": "^0.0.4",
+    "@parshjs/files": "^0.0.3",
     "@repo/server": "workspace:*",
-    "@stricli/core": "^1.2.6",
-    "node-datachannel": "^0.32.2"
+    "node-datachannel": "^0.32.2",
+    "zod": "^4.3.6"
   }
 }

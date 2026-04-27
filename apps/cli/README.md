@@ -5,5 +5,5 @@ The psst CLI application.
 ## Development
 
 ```sh
-bun run src/index.ts
+bun run src/main.ts
 ```

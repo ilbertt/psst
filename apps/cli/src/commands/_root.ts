@@ -1,5 +1,4 @@
-import { buildCommand } from '@stricli/core';
-import type { AppContext } from '#context.ts';
+import { defineRootCommand } from '@parshjs/core';
 import { checkFfmpeg } from '#services/audio.ts';
 import { type ActiveCall, answerCall, startCall } from '#services/call.ts';
 import { runLauncher } from '#ui/launcher.tsx';
@@ -15,22 +14,18 @@ function ffmpegInstallHint(): string {
   return 'winget install ffmpeg  (or see https://ffmpeg.org/download.html)';
 }
 
-export const rootCommand = buildCommand({
-  docs: {
-    brief: 'psst — tap someone on the shoulder',
-  },
-  parameters: { flags: {} },
-  // biome-ignore lint/complexity/useMaxParams: Stricli func signature
-  async func(this: AppContext, _flags) {
+export const command = defineRootCommand({
+  options: {},
+  handler: async ({ context, print }) => {
     if (!(await checkFfmpeg())) {
-      process.stderr.write(
+      print.error(
         `ffmpeg is not installed. psst needs it for audio capture and playback.\n` +
-          `Install it with: ${ffmpegInstallHint()}\n`,
+          `Install it with: ${ffmpegInstallHint()}`,
       );
       process.exit(1);
     }
 
-    const result = await runLauncher(this);
+    const result = await runLauncher(context);
     if (!result) {
       return;
     }
@@ -38,14 +33,14 @@ export const rootCommand = buildCommand({
     let call: ActiveCall;
     if (result.kind === 'create') {
       call = await startCall({
-        api: this.api,
+        api: context.api,
         roomCode: result.roomCode,
         myPeerId: result.myPeerId,
         peer: result.peer,
       });
     } else {
       call = await answerCall({
-        api: this.api,
+        api: context.api,
         roomCode: result.roomCode,
         myPeerId: result.myPeerId,
         peer: result.peer,
@@ -56,4 +51,4 @@ export const rootCommand = buildCommand({
     await showTalkingScreen({ peer: call.peer, stats: call.stats });
     call.stop();
   },
-} satisfies Parameters<typeof buildCommand<Record<string, never>, [], AppContext>>[0]);
+});

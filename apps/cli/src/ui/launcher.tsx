@@ -1,6 +1,7 @@
 import { Box, render, Text, useInput } from 'ink';
 import { useEffect, useRef, useState } from 'react';
 import type { AppContext } from '#context.ts';
+import { DEFAULT_CONFIG } from '#files.ts';
 import {
   createRoom,
   getPeerName,
@@ -24,12 +25,12 @@ export async function runLauncher(ctx: AppContext): Promise<LauncherResult | nul
       return null;
     }
 
-    if (ctx.config.needsName) {
+    if (ctx.config.value.name === DEFAULT_CONFIG.name) {
       const name = await promptName();
       if (!name) {
         continue;
       }
-      ctx.config.update({ name });
+      await ctx.config.set({ name });
     }
 
     const result = action === 'create' ? await runCreateFlow(ctx) : await runJoinFlow(ctx);
@@ -43,7 +44,7 @@ export async function runLauncher(ctx: AppContext): Promise<LauncherResult | nul
 }
 
 async function runCreateFlow(ctx: AppContext): Promise<LauncherResult | null> {
-  const joined = await createRoom({ api: ctx.api, name: ctx.config.name });
+  const joined = await createRoom({ api: ctx.api, name: ctx.config.value.name });
   const peer = await showWaitingForPeer({
     code: joined.code,
     api: ctx.api,
@@ -63,7 +64,7 @@ async function runJoinFlow(ctx: AppContext): Promise<LauncherResult | 'back' | n
 
   let joined: Awaited<ReturnType<typeof joinRoomByCode>>;
   try {
-    joined = await joinRoomByCode({ api: ctx.api, code, name: ctx.config.name });
+    joined = await joinRoomByCode({ api: ctx.api, code, name: ctx.config.value.name });
   } catch (err) {
     await showError((err as Error).message);
     return 'back';

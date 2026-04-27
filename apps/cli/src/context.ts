@@ -1,17 +1,12 @@
-import type { CommandContext } from '@stricli/core';
+import { filesContext } from '#files.ts';
 import { createApiClient } from '#services/api-client.ts';
-import { ConfigManager } from '#services/config-manager.ts';
 
-export interface AppContext extends CommandContext {
-  readonly api: ReturnType<typeof createApiClient>;
-  readonly config: ConfigManager;
-}
+export type AppContext = Awaited<ReturnType<typeof createContext>>;
 
-export function createContext(): AppContext {
-  const config = new ConfigManager();
+export async function createContext() {
+  const config = await filesContext.config.load();
   return {
-    process,
-    api: createApiClient(config.serverUrl),
+    api: createApiClient(config.value.serverUrl),
     config,
   };
 }

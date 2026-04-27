@@ -1,5 +1,6 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import pkg from '../package.json' with { type: 'json' };
 import { embedNodeDataChannelPlugin } from './embed-node-datachannel';
 
 const BUILD_SCRIPTS_DIR = import.meta.dir;
@@ -12,13 +13,14 @@ await rm(DIST_DIR, { recursive: true, force: true });
 
 console.log('🔨 Compiling binary...');
 const buildResult = await Bun.build({
-  entrypoints: ['./src/index.ts'],
+  entrypoints: ['./src/main.ts'],
   compile: { outfile: CLI_OUT },
   minify: { whitespace: true, syntax: true },
   bytecode: true,
   format: 'esm',
   external: ['react-devtools-core'],
   plugins: [embedNodeDataChannelPlugin],
+  define: { __VERSION__: JSON.stringify(pkg.version) },
 });
 
 if (!buildResult.success) {

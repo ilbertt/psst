@@ -11,6 +11,7 @@
   "devDependencies": {
     "@parshjs/codegen": "^0.0.3",
     "@repo/typescript-config": "workspace:*",
+    "@types/react": "^19.2.14",
     "typescript": "catalog:"
   },
   "imports": {
@@ -18,11 +19,12 @@
   },
   "dependencies": {
     "@elysiajs/eden": "^1.4.8",
-    "@opentui/core": "^0.1.96",
     "@parshjs/core": "^0.0.4",
     "@parshjs/files": "^0.0.3",
     "@repo/server": "workspace:*",
+    "ink": "^7.0.1",
     "node-datachannel": "^0.32.2",
+    "react": "^19.2.5",
     "zod": "^4.3.6"
   }
 }

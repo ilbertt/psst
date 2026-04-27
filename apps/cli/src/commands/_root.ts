@@ -1,8 +1,8 @@
 import { defineRootCommand } from '@parshjs/core';
 import { checkFfmpeg } from '#services/audio.ts';
 import { type ActiveCall, answerCall, startCall } from '#services/call.ts';
-import { runLauncher } from '#ui/launcher.ts';
-import { showTalkingScreen } from '#ui/talking-screen.ts';
+import { runLauncher } from '#ui/launcher.tsx';
+import { showTalkingScreen } from '#ui/talking-screen.tsx';
 
 function ffmpegInstallHint(): string {
   if (process.platform === 'darwin') {

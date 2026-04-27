@@ -18,6 +18,7 @@ const buildResult = await Bun.build({
   minify: { whitespace: true, syntax: true },
   bytecode: true,
   format: 'esm',
+  external: ['react-devtools-core'],
   plugins: [embedNodeDataChannelPlugin],
   define: { __VERSION__: JSON.stringify(pkg.version) },
 });

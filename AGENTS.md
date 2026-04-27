@@ -10,7 +10,7 @@ Bun + TypeScript monorepo (`apps/cli`, `apps/server`, `packages/*`).
 - **Monorepo:** Bun workspaces + Turbo
 - **CLI:** Stricli (type-safe commands, DI via `this: AppContext`)
 - **Server:** Elysia
-- **TUI:** OpenTUI
+- **TUI:** Ink (React)
 - **Linter/Formatter:** Biome (auto-formats on save)
 - **Commits:** Conventional Commits (commitlint)
 

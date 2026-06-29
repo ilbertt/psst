@@ -133,7 +133,11 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
 
   const pc = new PeerConnection(ctx.myPeerId, {
     iceServers,
-    iceTransportPolicy: 'relay',
+    // 'all' lets ICE pick the lowest-latency path: a direct host-to-host hop
+    // when both peers share a LAN (the in-person case), falling back to the
+    // TURN relay only when direct traversal fails. Forcing 'relay' would route
+    // every packet through the cloud even for two laptops in the same room.
+    iceTransportPolicy: 'all',
   });
   const stats: CallStats = {
     sent: 0,
@@ -152,6 +156,22 @@ async function createPeerConnection(ctx: PeerConnectionContext): Promise<{
     // the ICE state is the reliable source of truth for UI.
     stats.connectionState = state === 'completed' ? 'connected' : state;
     logCall({ event: 'ice-state', detail: state });
+    if (state === 'connected' || state === 'completed') {
+      try {
+        // Confirms the chosen path: 'host'/'srflx' is a direct, low-latency
+        // hop; 'relay' means audio is detouring through TURN and will feel
+        // laggy in person.
+        const pair = pc.getSelectedCandidatePair();
+        if (pair) {
+          logCall({
+            event: 'selected-candidate-pair',
+            detail: { localType: pair.local.type, remoteType: pair.remote.type },
+          });
+        }
+      } catch {
+        // selected pair not available yet
+      }
+    }
   });
   pc.onGatheringStateChange((state) => {
     logCall({ event: 'ice-gathering', detail: state });

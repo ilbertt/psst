@@ -48,7 +48,6 @@ export async function startCapture(): Promise<AudioCapture> {
   const port = 10000 + Math.floor(Math.random() * 50000);
 
   const logPath = `/tmp/psst-capture-${process.pid}.log`;
-  const wavPath = `/tmp/psst-mic-${process.pid}.wav`;
   const proc = Bun.spawn(
     [
       'ffmpeg',
@@ -57,6 +56,9 @@ export async function startCapture(): Promise<AudioCapture> {
       '-hide_banner',
       '-loglevel',
       'info',
+      // Don't let the demuxer accumulate input before encoding starts.
+      '-fflags',
+      'nobuffer',
       ...getMicInput(),
       '-map',
       '0:a',
@@ -64,24 +66,22 @@ export async function startCapture(): Promise<AudioCapture> {
       'libopus',
       '-application',
       'voip',
+      // Smallest standard Opus frame keeps packetization delay low (10 ms vs
+      // the 20 ms default) while staying within VoIP-friendly settings.
+      '-frame_duration',
+      '10',
       '-ar',
       String(SAMPLE_RATE),
       '-ac',
       String(CHANNELS),
       '-payload_type',
       String(PLAYBACK_PT),
+      // Emit each RTP packet the instant it's encoded instead of buffering.
+      '-flush_packets',
+      '1',
       '-f',
       'rtp',
       `rtp://127.0.0.1:${port}`,
-      '-map',
-      '0:a',
-      '-ar',
-      String(SAMPLE_RATE),
-      '-ac',
-      String(CHANNELS),
-      '-f',
-      'wav',
-      wavPath,
     ],
     {
       stdin: 'ignore',
@@ -127,6 +127,18 @@ export async function startPlayback(): Promise<AudioPlayback> {
       'nobuffer',
       '-flags',
       'low_delay',
+      // The codec is already known from the SDP, so skip stream probing/analysis
+      // that would otherwise delay first audio.
+      '-probesize',
+      '32',
+      '-analyzeduration',
+      '0',
+      // Don't hold packets to reorder — on a LAN jitter is negligible, and any
+      // reorder/jitter buffer is added mouth-to-ear latency.
+      '-max_delay',
+      '0',
+      '-reorder_queue_size',
+      '0',
       '-protocol_whitelist',
       'file,udp,rtp',
       '-i',
